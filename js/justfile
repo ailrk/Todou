@@ -1,0 +1,5 @@
+build:
+    #!/usr/bin/env bash
+    npx tsc
+    cp ./*.css ./dist
+    cp ./*.html ./dist
