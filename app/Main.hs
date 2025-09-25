@@ -1,5 +1,7 @@
 module Main where
 
 
+import Todou qualified
+
 main :: IO ()
-main = putStrLn "hi"
+main = Todou.main
