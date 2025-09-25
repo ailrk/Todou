@@ -1,5 +1,26 @@
-import { Entry, EntryId, Model, Visibility } from "./defs.js";
 import { newVdom, VNode, h } from "./vdom.js";
+
+
+export type EntryId = number;
+
+
+export type Visibility = "All" | "Completed" | "Active";
+
+
+export interface Entry {
+  id: EntryId;
+  description: string;
+  completed: boolean;
+  editing: boolean;
+}
+
+
+export interface Model {
+  entries: Entry[];
+  visibility: Visibility;
+  field: string;
+  nextId: EntryId;
+}
 
 
 function renderTodou(model: Model): VNode {
@@ -105,7 +126,6 @@ function renderControlsFilter(model: Model, visibility: Visibility): VNode {
 }
 
 
-
 function visibilitySwap(model: Model, uri: string, vis: Visibility, currentVis: Visibility): VNode {
   return (
     <li onclick={() => changeVisibility(model, vis)}>
@@ -115,7 +135,6 @@ function visibilitySwap(model: Model, uri: string, vis: Visibility, currentVis: 
     </li>
   );
 }
-
 
 
 function renderControlsClear(model: Model, entriesCompleted: number): VNode {
