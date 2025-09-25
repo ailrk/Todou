@@ -10,7 +10,6 @@ function main() {
     rerender(model);
 }
 function rerender(model) {
-    console.log(model);
     const newTree = render(model);
     updateElement(document.getElementById("app"), newTree, oldTree);
     oldTree = newTree;
@@ -68,7 +67,6 @@ function renderEntries(model) {
             default: return true;
         }
     };
-    console.log("render entries ", model);
     return {
         tag: "section", attrs: { "class": "main", style: `visibility:${cssVisibility}` },
         children: [
@@ -167,8 +165,17 @@ function renderEntry(model, entry) {
         tag: "li",
         key: `todo-${entry.id}`,
         attrs: {
-            "class": entry.completed ? "completed" : "",
-            ...(entry.editing ? { editing: "" } : {})
+            "class": (_ => {
+                let classes = [entry.completed ? "completed" : "",
+                    entry.editing ? "editing" : ""
+                ];
+                if (classes.length === 0) {
+                    return "";
+                }
+                else {
+                    return classes.join("");
+                }
+            })()
         },
         children: [
             { tag: "div", attrs: { "class": "view" },
@@ -269,7 +276,6 @@ function deleteCompletedEntries(model) {
     rerender(model);
 }
 function checkEntry(model, id, isCompleted) {
-    console.log("check Entry: ", id);
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.completed = isCompleted;

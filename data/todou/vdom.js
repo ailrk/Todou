@@ -73,7 +73,6 @@ export function createElement(vnode) {
 /** Update an element. The existing element is the `index`th child of the parent. */
 export function updateElement(parent, newVNode, oldVNode, index = 0) {
     if (parent.tagName === "UL" && parent.classList.contains("todo-list")) {
-        console.log(">>>", parent.cloneNode(true), oldVNode, newVNode);
     }
     if (!oldVNode) {
         if (newVNode) {
