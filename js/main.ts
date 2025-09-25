@@ -1,30 +1,8 @@
 import { Entry, EntryId, Model, Visibility } from "./defs.js";
-import { updateElement, VNode } from "./vdom.js";
+import { newVdom, VNode } from "./vdom.js";
 
 
-let oldTree: VNode | undefined = undefined;
-
-
-function main() {
-  let model: Model = {
-    entries: [],
-    visibility: "All",
-    field: "",
-    nextId: 0
-  }
-
-  rerender(model);
-}
-
-
-function rerender(model: Model) {
-  const newTree = render(model);
-  updateElement(document.getElementById("app")!, newTree, oldTree);
-  oldTree = newTree;
-}
-
-
-function render(model: Model) {
+function renderTodou(model: Model) {
   return {
     tag: "div", attrs: { "class": "todou-container" },
     children: [
@@ -191,7 +169,6 @@ function renderFooterInfo(): VNode {
 
 
 function renderEntry(model: Model, entry: Entry): VNode {
-
   return {
     tag: "li",
     key: `todo-${entry.id}`,
@@ -274,13 +251,13 @@ function addEntry(model: Model) {
     })
   }
   model.field = "";
-  rerender(model);
+  vdom.render();
 }
 
 
 function updateField(model: Model, str: string) {
   model.field = str;
-  rerender(model);
+  vdom.render();
 }
 
 
@@ -291,7 +268,7 @@ function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
     }
   })
 
-  rerender(model);
+  vdom.render();
 
   let ele = document.getElementById(`todo-${id}`);
   if (ele) {
@@ -306,19 +283,19 @@ function updateEntry(model: Model, id: EntryId, task: string) {
       entry.description = task;
     }
   })
-  rerender(model);
+  vdom.render();
 }
 
 
 function deleteEntry(model: Model, id: EntryId) {
   model.entries = model.entries.filter(entry => entry.id !== id);
-  rerender(model);
+  vdom.render();
 }
 
 
 function deleteCompletedEntries(model: Model) {
   model.entries = model.entries.filter(entry => !entry.completed);
-  rerender(model);
+  vdom.render();
 }
 
 
@@ -328,7 +305,7 @@ function checkEntry(model: Model, id: EntryId, isCompleted: boolean) {
       entry.completed = isCompleted
     }
   });
-  rerender(model);
+  vdom.render();
 }
 
 
@@ -336,14 +313,26 @@ function checkAllEntries(model: Model, isCompleted: boolean) {
   model.entries.forEach(entry => {
     entry.completed = isCompleted
   });
-  rerender(model);
+  vdom.render();
 }
 
 
 function changeVisibility(model: Model, visibility: Visibility) {
   model.visibility = visibility
-  rerender(model);
+  vdom.render();
 }
 
 
-main();
+let vdom = newVdom({
+  model: {
+    entries: [],
+    visibility: "All",
+    field: "",
+    nextId: 0
+  },
+  render: renderTodou,
+  root: document.getElementById("app")!
+});
+
+
+vdom.render();

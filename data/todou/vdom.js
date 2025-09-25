@@ -19,30 +19,21 @@ items to shift positions, breaking the diffing logic. To handle this, elements c
 `key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
 first, and fall back to index-based comparison if no key is provided.
 */
-function keyIsProperty(k) {
-    switch (k) {
-        case "checked":
-        case "value":
-        case "className":
-        case "classList":
-        case "selected":
-        case "muted":
-        case "defaultValue":
-        case "defaultChecked":
-        case "selectedIndex":
-        case "disabled":
-        case "contentEditable":
-        case "readOnly":
-        case "hidden":
-            return true;
-        default:
-            return false;
-    }
+/** Create a new vdom object. The object can be tweaked after creation */
+export function newVdom({ model, root, render }) {
+    let _tree = undefined;
+    let _root = root;
+    return {
+        render: () => {
+            const newTree = render(model);
+            updateElement(root, newTree, _tree);
+            _tree = newTree;
+        },
+        root: _root,
+        vroot: _tree
+    };
 }
-function keyIsHandler(k, v) {
-    return k.startsWith('on') && typeof v === 'function';
-}
-export function createElement(vnode) {
+function createElement(vnode) {
     if (typeof vnode === 'string')
         return document.createTextNode(vnode);
     const el = document.createElement(vnode.tag);
@@ -71,9 +62,7 @@ export function createElement(vnode) {
     return el;
 }
 /** Update an element. The existing element is the `index`th child of the parent. */
-export function updateElement(parent, newVNode, oldVNode, index = 0) {
-    if (parent.tagName === "UL" && parent.classList.contains("todo-list")) {
-    }
+function updateElement(parent, newVNode, oldVNode, index = 0) {
     if (!oldVNode) {
         if (newVNode) {
             parent.appendChild(createElement(newVNode));
@@ -100,9 +89,13 @@ export function updateElement(parent, newVNode, oldVNode, index = 0) {
     if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.tag === oldVNode.tag) {
         let el = existing;
         for (const [k, v] of Object.entries(newVNode.attrs || {})) {
-            if (v == null)
+            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('+', newVNode.key, k, ':', v, '<og>', (el as any)[k])
+            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('newVNode', newVNode)
+            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('oldVNode', oldVNode)
+            if (v == null) {
                 continue;
-            if (keyIsHandler(k, v)) {
+            }
+            else if (keyIsHandler(k, v)) {
                 if (oldVNode._listeners?.[k]) {
                     el.removeEventListener(k.slice(2).toLowerCase(), oldVNode._listeners[k]);
                 }
@@ -116,12 +109,16 @@ export function updateElement(parent, newVNode, oldVNode, index = 0) {
                 }
             }
             else {
+                if (parent.tagName === "UL" && parent.classList.contains("todo-list"))
+                    console.log('SET ATTR', k, v, el.getAttribute(k), ".");
                 el.setAttribute(k, v);
             }
         }
         // Remove keys
         for (const k of Object.keys(oldVNode.attrs ?? {})) {
             if (!(newVNode.attrs && k in newVNode.attrs)) {
+                if (parent.tagName === "UL" && parent.classList.contains("todo-list"))
+                    console.log('-', k);
                 el.removeAttribute(k);
             }
         }
@@ -152,30 +149,55 @@ function updateChildren(parent, newChildren, oldChildren) {
             ref: parent.childNodes[idx] // the index can change later, need to remember the ref here.
         });
     });
+    let pendingActions = [];
     newChildren.forEach((child, idx) => {
         let key = getKey(child, idx);
         let matched = oldKeyMap.get(key);
+        if (parent.tagName === "UL" && parent.classList.contains("todo-list") && typeof child !== 'string')
+            console.log('>', child);
+        if (parent.tagName === "UL" && parent.classList.contains("todo-list") && typeof child !== 'string')
+            console.log('>', matched);
         if (matched) {
             let newNode;
-            if (typeof key === 'string' && oldChildren.length !== newChildren.length) { // TODO fix update so we don't need to copy
-                newNode = createElement(child);
+            updateElement(parent, child, matched.vnode, matched.index);
+            newNode = parent.childNodes[matched.index];
+            oldKeyMap.delete(key);
+            if (parent.childNodes[idx] !== newNode) {
                 parent.insertBefore(newNode, parent.childNodes[idx] || null);
-            }
-            else {
-                updateElement(parent, child, matched.vnode, matched.index);
-                newNode = parent.childNodes[matched.index];
-                oldKeyMap.delete(key);
-                if (parent.childNodes[idx] !== newNode) {
-                    parent.insertBefore(newNode, parent.childNodes[idx] || null);
-                }
             }
         }
         else {
-            parent.insertBefore(createElement(child), parent.childNodes[idx] || null);
+            pendingActions.push(() => { parent.insertBefore(createElement(child), parent.childNodes[idx] || null); });
         }
     });
     // Remove leftovers
     for (const { ref } of oldKeyMap.values()) {
         parent.removeChild(ref);
     }
+    for (const action of pendingActions) {
+        action();
+    }
+}
+function keyIsProperty(k) {
+    switch (k) {
+        case "checked":
+        case "value":
+        case "className":
+        case "classList":
+        case "selected":
+        case "muted":
+        case "defaultValue":
+        case "defaultChecked":
+        case "selectedIndex":
+        case "disabled":
+        case "contentEditable":
+        case "readOnly":
+        case "hidden":
+            return true;
+        default:
+            return false;
+    }
+}
+function keyIsHandler(k, v) {
+    return k.startsWith('on') && typeof v === 'function';
 }

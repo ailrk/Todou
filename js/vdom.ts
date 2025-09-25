@@ -24,6 +24,7 @@ first, and fall back to index-based comparison if no key is provided.
 type VKey = string | number;
 
 
+/* A Virtual dom tree is a rose tree with unbounded children  */
 export type VNode
   = string
   | { tag: string,
@@ -34,34 +35,24 @@ export type VNode
     };
 
 
-function keyIsProperty(k: string): boolean {
-  switch (k) {
-    case "checked":
-    case "value":
-    case "className":
-    case "classList":
-    case "selected":
-    case "muted":
-    case "defaultValue":
-    case "defaultChecked":
-    case "selectedIndex":
-    case "disabled":
-    case "contentEditable":
-    case "readOnly":
-    case "hidden":
-      return true;
-    default:
-      return false;
+
+/** Create a new vdom object. The object can be tweaked after creation */
+export function newVdom<Model>({ model, root, render }: { model: Model, root: HTMLElement, render: (model: Model) => VNode }) {
+  let _tree: VNode | undefined = undefined;
+  let _root = root;
+  return {
+    render: () => {
+      const newTree = render(model);
+      updateElement(root, newTree, _tree);
+      _tree = newTree;
+    },
+    root: _root,
+    vroot: _tree
   }
 }
 
 
-function keyIsHandler(k: string, v: any): boolean {
-  return k.startsWith('on') && typeof v === 'function';
-}
-
-
-export function createElement(vnode: VNode): Node {
+function createElement(vnode: VNode): Node {
   if (typeof vnode === 'string') return document.createTextNode(vnode);
 
   const el = document.createElement(vnode.tag);
@@ -94,9 +85,8 @@ export function createElement(vnode: VNode): Node {
 
 
 /** Update an element. The existing element is the `index`th child of the parent. */
-export function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, index = 0) {
-  if (parent.tagName === "UL" && parent.classList.contains("todo-list")) {
-  }
+function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, index = 0) {
+
   if (!oldVNode) {
     if (newVNode) {
       parent.appendChild(createElement(newVNode));
@@ -126,9 +116,10 @@ export function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: 
     let el = existing as HTMLElement;
 
     for (const [k, v] of Object.entries(newVNode.attrs || {})) {
-      if (v == null) continue;
+      if (v == null) {
+        continue;
 
-      if (keyIsHandler(k, v)) {
+      } else if (keyIsHandler(k, v)) {
         if (oldVNode._listeners?.[k]) {
           el.removeEventListener(k.slice(2).toLowerCase(), oldVNode._listeners[k]);
         }
@@ -182,26 +173,21 @@ function updateChildren(parent: HTMLElement, newChildren: VNode[], oldChildren: 
     })
   })
 
+  let pendingActions: (() => void)[] = []
+
   newChildren.forEach((child, idx) => {
     let key = getKey(child, idx);
     let matched = oldKeyMap.get(key);
-    if (matched) {
-
+    if (matched) { // swap
       let newNode;
-      if (typeof key === 'string' && oldChildren.length !== newChildren.length) { // TODO fix update so we don't need to copy
-        newNode = createElement(child);
+      updateElement(parent, child, matched.vnode, matched.index);
+      newNode = parent.childNodes[matched.index];
+      oldKeyMap.delete(key);
+      if (parent.childNodes[idx] !== newNode) {
         parent.insertBefore(newNode, parent.childNodes[idx] || null);
-      } else {
-        updateElement(parent, child, matched.vnode, matched.index);
-        newNode = parent.childNodes[matched.index];
-        oldKeyMap.delete(key);
-        if (parent.childNodes[idx] !== newNode) {
-          parent.insertBefore(newNode, parent.childNodes[idx] || null);
-        }
       }
-
-    } else {
-      parent.insertBefore(createElement(child), parent.childNodes[idx] || null);
+    } else { // need to insert at the right position
+      pendingActions.push( () => { parent.insertBefore(createElement(child), parent.childNodes[idx] || null); })
     }
   })
 
@@ -209,4 +195,35 @@ function updateChildren(parent: HTMLElement, newChildren: VNode[], oldChildren: 
   for (const { ref } of oldKeyMap.values()) {
     parent.removeChild(ref)
   }
+
+  for (const action of pendingActions) {
+    action()
+  }
+}
+
+
+function keyIsProperty(k: string): boolean {
+  switch (k) {
+    case "checked":
+    case "value":
+    case "className":
+    case "classList":
+    case "selected":
+    case "muted":
+    case "defaultValue":
+    case "defaultChecked":
+    case "selectedIndex":
+    case "disabled":
+    case "contentEditable":
+    case "readOnly":
+    case "hidden":
+      return true;
+    default:
+      return false;
+  }
+}
+
+
+function keyIsHandler(k: string, v: any): boolean {
+  return k.startsWith('on') && typeof v === 'function';
 }

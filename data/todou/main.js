@@ -1,20 +1,5 @@
-import { updateElement } from "./vdom.js";
-let oldTree = undefined;
-function main() {
-    let model = {
-        entries: [],
-        visibility: "All",
-        field: "",
-        nextId: 0
-    };
-    rerender(model);
-}
-function rerender(model) {
-    const newTree = render(model);
-    updateElement(document.getElementById("app"), newTree, oldTree);
-    oldTree = newTree;
-}
-function render(model) {
+import { newVdom } from "./vdom.js";
+function renderTodou(model) {
     return {
         tag: "div", attrs: { "class": "todou-container" },
         children: [
@@ -232,6 +217,7 @@ function renderEntry(model, entry) {
     };
 }
 function addEntry(model) {
+    console.log('addEntry');
     if (model.field !== "") {
         model.entries.push({
             id: model.nextId++,
@@ -241,56 +227,74 @@ function addEntry(model) {
         });
     }
     model.field = "";
-    rerender(model);
+    vdom.render();
 }
 function updateField(model, str) {
+    console.log('updateField');
     model.field = str;
-    rerender(model);
+    vdom.render();
 }
 function editingEntry(model, id, isEditing) {
+    console.log('editingEntry');
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.editing = isEditing;
         }
     });
-    rerender(model);
+    vdom.render();
     let ele = document.getElementById(`todo-${id}`);
     if (ele) {
         ele.focus();
     }
 }
 function updateEntry(model, id, task) {
+    console.log('updateEntry');
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.description = task;
         }
     });
-    rerender(model);
+    vdom.render();
 }
 function deleteEntry(model, id) {
+    console.log('deleteEntry');
     model.entries = model.entries.filter(entry => entry.id !== id);
-    rerender(model);
+    vdom.render();
 }
 function deleteCompletedEntries(model) {
+    console.log('deleteCompletedEntries');
     model.entries = model.entries.filter(entry => !entry.completed);
-    rerender(model);
+    vdom.render();
 }
 function checkEntry(model, id, isCompleted) {
+    console.log('checkEntry');
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.completed = isCompleted;
         }
     });
-    rerender(model);
+    vdom.render();
 }
 function checkAllEntries(model, isCompleted) {
+    console.log('checkAllEntries');
     model.entries.forEach(entry => {
         entry.completed = isCompleted;
     });
-    rerender(model);
+    vdom.render();
 }
 function changeVisibility(model, visibility) {
+    console.log('changeVisibility');
     model.visibility = visibility;
-    rerender(model);
+    vdom.render();
 }
-main();
+let vdom = newVdom({
+    model: {
+        entries: [],
+        visibility: "All",
+        field: "",
+        nextId: 0
+    },
+    render: renderTodou,
+    root: document.getElementById("app")
+});
+vdom.render();
