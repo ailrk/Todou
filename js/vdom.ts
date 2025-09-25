@@ -178,16 +178,18 @@ function updateChildren(parent: HTMLElement, newChildren: VNode[], oldChildren: 
   newChildren.forEach((child, idx) => {
     let key = getKey(child, idx);
     let matched = oldKeyMap.get(key);
-    if (matched) { // swap
+    if (matched) {
       let newNode;
       updateElement(parent, child, matched.vnode, matched.index);
       newNode = parent.childNodes[matched.index];
       oldKeyMap.delete(key);
-      if (parent.childNodes[idx] !== newNode) {
+      if (parent.childNodes[idx] !== newNode) { // move if necessary
         parent.insertBefore(newNode, parent.childNodes[idx] || null);
       }
-    } else { // need to insert at the right position
-      pendingActions.push( () => { parent.insertBefore(createElement(child), parent.childNodes[idx] || null); })
+    } else { // insert new nodes after the loop finishes so we don't mess up the index.
+      pendingActions.push( () => {
+        parent.insertBefore(createElement(child), parent.childNodes[idx] || null);
+      })
     }
   })
 
@@ -226,4 +228,26 @@ function keyIsProperty(k: string): boolean {
 
 function keyIsHandler(k: string, v: any): boolean {
   return k.startsWith('on') && typeof v === 'function';
+}
+
+
+/** JSX factory: turns JSX into our VNode */
+export function h(tag: string, props: Record<string, any | null>, ...children: any[]): VNode {
+  // Normalize children (flatten, drop null/undefined, keep strings)
+  const flatChildren: VNode[] = [];
+  children.flat(Infinity).forEach(c => {
+    if (c == null || c === false) return;
+    if (typeof c === "string" || typeof c === "number") {
+      flatChildren.push(String(c));
+    } else {
+      flatChildren.push(c);
+    }
+  });
+
+  return {
+    tag,
+    attrs: props || {},
+    children: flatChildren.length > 0 ? flatChildren : undefined,
+    key: props?.key
+  };
 }

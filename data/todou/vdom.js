@@ -89,9 +89,6 @@ function updateElement(parent, newVNode, oldVNode, index = 0) {
     if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.tag === oldVNode.tag) {
         let el = existing;
         for (const [k, v] of Object.entries(newVNode.attrs || {})) {
-            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('+', newVNode.key, k, ':', v, '<og>', (el as any)[k])
-            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('newVNode', newVNode)
-            // if (parent.tagName === "UL" && parent.classList.contains("todo-list")) console.log('oldVNode', oldVNode)
             if (v == null) {
                 continue;
             }
@@ -109,16 +106,12 @@ function updateElement(parent, newVNode, oldVNode, index = 0) {
                 }
             }
             else {
-                if (parent.tagName === "UL" && parent.classList.contains("todo-list"))
-                    console.log('SET ATTR', k, v, el.getAttribute(k), ".");
                 el.setAttribute(k, v);
             }
         }
         // Remove keys
         for (const k of Object.keys(oldVNode.attrs ?? {})) {
             if (!(newVNode.attrs && k in newVNode.attrs)) {
-                if (parent.tagName === "UL" && parent.classList.contains("todo-list"))
-                    console.log('-', k);
                 el.removeAttribute(k);
             }
         }
@@ -153,21 +146,19 @@ function updateChildren(parent, newChildren, oldChildren) {
     newChildren.forEach((child, idx) => {
         let key = getKey(child, idx);
         let matched = oldKeyMap.get(key);
-        if (parent.tagName === "UL" && parent.classList.contains("todo-list") && typeof child !== 'string')
-            console.log('>', child);
-        if (parent.tagName === "UL" && parent.classList.contains("todo-list") && typeof child !== 'string')
-            console.log('>', matched);
         if (matched) {
             let newNode;
             updateElement(parent, child, matched.vnode, matched.index);
             newNode = parent.childNodes[matched.index];
             oldKeyMap.delete(key);
-            if (parent.childNodes[idx] !== newNode) {
+            if (parent.childNodes[idx] !== newNode) { // move if necessary
                 parent.insertBefore(newNode, parent.childNodes[idx] || null);
             }
         }
-        else {
-            pendingActions.push(() => { parent.insertBefore(createElement(child), parent.childNodes[idx] || null); });
+        else { // insert new nodes after the loop finishes so we don't mess up the index.
+            pendingActions.push(() => {
+                parent.insertBefore(createElement(child), parent.childNodes[idx] || null);
+            });
         }
     });
     // Remove leftovers
@@ -200,4 +191,25 @@ function keyIsProperty(k) {
 }
 function keyIsHandler(k, v) {
     return k.startsWith('on') && typeof v === 'function';
+}
+/** JSX factory: turns JSX into our VNode */
+export function h(tag, props, ...children) {
+    // Normalize children (flatten, drop null/undefined, keep strings)
+    const flatChildren = [];
+    children.flat(Infinity).forEach(c => {
+        if (c == null || c === false)
+            return;
+        if (typeof c === "string" || typeof c === "number") {
+            flatChildren.push(String(c));
+        }
+        else {
+            flatChildren.push(c);
+        }
+    });
+    return {
+        tag,
+        attrs: props || {},
+        children: flatChildren.length > 0 ? flatChildren : undefined,
+        key: props?.key
+    };
 }
