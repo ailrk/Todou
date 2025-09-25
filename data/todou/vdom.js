@@ -156,8 +156,8 @@ function updateChildren(parent, newChildren, oldChildren) {
         let key = getKey(child, idx);
         let matched = oldKeyMap.get(key);
         if (matched) {
-            let newNode; // TODO update is not complete, this is why we need new node for key
-            if (typeof key === 'string') {
+            let newNode;
+            if (typeof key === 'string' && oldChildren.length !== newChildren.length) { // TODO fix update so we don't need to copy
                 newNode = createElement(child);
                 parent.insertBefore(newNode, parent.childNodes[idx] || null);
             }
@@ -165,7 +165,6 @@ function updateChildren(parent, newChildren, oldChildren) {
                 updateElement(parent, child, matched.vnode, matched.index);
                 newNode = parent.childNodes[matched.index];
                 oldKeyMap.delete(key);
-                // move when necessary
                 if (parent.childNodes[idx] !== newNode) {
                     parent.insertBefore(newNode, parent.childNodes[idx] || null);
                 }
