@@ -1,32 +1,89 @@
-export function createElement(vnode) {
-    if (typeof vnode === 'string') {
-        return document.createTextNode(vnode);
+/* Minimal Virtual DOM
+
+Instead of manipulating DOM elements directly, the virtual DOM (VDOM) constructs an in-memory
+representation of the DOM tree whenever the page updates. It then compares this new VDOM tree
+with the previous one, and translates the structural differences into the minimal set of required
+DOM operations. This process of comparing VDOMs and applying updates is called **reconciliation**.
+
+A real DOM element consists of **attributes** and **properties**. Attributes are static fields
+from the HTML markup, while properties are dynamic fields reflecting the current state of the element.
+In this VDOM, `VNode` contains only `attrs`, which represent both attributes and property updates.
+
+The diffing algorithm works recursively on the tree structure of the VDOM. At each step, it tries
+to minimize changes by **reusing as much of the existing structure as possible**. When a completely
+different node is encountered, the old node is discarded and a new one is constructed.
+
+Special care is needed for **lists**. List items can be inserted, deleted, or reordered. If children
+are compared only by index, removing an element in the middle of a list can cause all subsequent
+items to shift positions, breaking the diffing logic. To handle this, elements can have a stable
+`key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
+first, and fall back to index-based comparison if no key is provided.
+*/
+function keyIsProperty(k) {
+    switch (k) {
+        case "checked":
+        case "value":
+        case "className":
+        case "classList":
+        case "selected":
+        case "muted":
+        case "defaultValue":
+        case "defaultChecked":
+        case "selectedIndex":
+        case "disabled":
+        case "contentEditable":
+        case "readOnly":
+        case "hidden":
+            return true;
+        default:
+            return false;
     }
-    const el = document.createElement(vnode.TAG);
-    if (vnode.PROPS) {
-        for (const [k, v] of Object.entries(vnode.PROPS)) {
-            if (k === 'class' || k === 'className') {
-                el.className = v;
-            }
-            else if (k.startsWith('on') && typeof v === 'function') {
+}
+function keyIsHandler(k, v) {
+    return k.startsWith('on') && typeof v === 'function';
+}
+export function createElement(vnode) {
+    if (typeof vnode === 'string')
+        return document.createTextNode(vnode);
+    const el = document.createElement(vnode.tag);
+    if (vnode.attrs) {
+        for (const [k, v] of Object.entries(vnode.attrs)) {
+            if (keyIsHandler(k, v)) {
                 el.addEventListener(k.slice(2).toLowerCase(), v);
+                vnode._listeners = vnode._listeners || {};
+                vnode._listeners[k] = v;
             }
-            else if (k === "checked") {
-                el.checked = v;
+            else if (keyIsProperty(k)) {
+                if (el[k] !== v) {
+                    el[k] = v;
+                }
             }
             else {
                 el.setAttribute(k, v);
             }
         }
     }
-    if (vnode.CHILDREN) {
-        for (const child of vnode.CHILDREN) {
+    if (vnode.children) {
+        for (const child of vnode.children) {
             el.appendChild(createElement(child));
         }
     }
     return el;
 }
+/** Update an element. The existing element is the `index`th child of the parent. */
 export function updateElement(parent, newVNode, oldVNode, index = 0) {
+    if (parent.tagName === "UL" && parent.classList.contains("todo-list")) {
+        console.log(">>>", parent.cloneNode(true), oldVNode, newVNode);
+    }
+    if (!oldVNode) {
+        if (newVNode) {
+            parent.appendChild(createElement(newVNode));
+        }
+        else {
+            console.error("[vdom] can't diff vdom without a vnode");
+        }
+        return;
+    }
     let existing = parent.childNodes[index];
     if (!newVNode) {
         if (existing) {
@@ -34,56 +91,93 @@ export function updateElement(parent, newVNode, oldVNode, index = 0) {
         }
         return;
     }
-    if (!oldVNode) {
-        parent.appendChild(createElement(newVNode));
-        return;
-    }
+    // Simple text node
     if (typeof newVNode === 'string' && typeof oldVNode === 'string') {
         if (newVNode !== oldVNode)
             existing.textContent = newVNode;
         return;
     }
-    if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.TAG === oldVNode.TAG) {
-        // Update PROPS
+    // Update attrs
+    if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.tag === oldVNode.tag) {
         let el = existing;
-        for (const [k, v] of Object.entries(newVNode.PROPS || {})) {
+        for (const [k, v] of Object.entries(newVNode.attrs || {})) {
             if (v == null)
                 continue;
-            if (k.startsWith('on') && typeof v === 'function') {
-                if (oldVNode._LISTENERS?.[k]) {
-                    el.removeEventListener(k.slice(2).toLowerCase(), oldVNode._LISTENERS[k]);
+            if (keyIsHandler(k, v)) {
+                if (oldVNode._listeners?.[k]) {
+                    el.removeEventListener(k.slice(2).toLowerCase(), oldVNode._listeners[k]);
                 }
                 el.addEventListener(k.slice(2).toLowerCase(), v);
-                newVNode._LISTENERS = newVNode._LISTENERS || {};
-                newVNode._LISTENERS[k] = v;
+                newVNode._listeners = newVNode._listeners || {};
+                newVNode._listeners[k] = v;
             }
-            else if (k === 'class' || k === 'className') {
-                el.className = v;
-            }
-            else if (k === 'value') {
+            else if (keyIsProperty(k)) {
                 if (el[k] !== v) {
                     el[k] = v;
                 }
-            }
-            else if (k === 'checked') {
-                el.checked = v;
             }
             else {
                 el.setAttribute(k, v);
             }
         }
-        for (const k of Object.keys(oldVNode.PROPS ?? {})) {
-            if (!(newVNode.PROPS && k in newVNode.PROPS)) {
+        // Remove keys
+        for (const k of Object.keys(oldVNode.attrs ?? {})) {
+            if (!(newVNode.attrs && k in newVNode.attrs)) {
                 el.removeAttribute(k);
             }
         }
-        // Recurse on CHILDREN
-        const max = Math.max(newVNode.CHILDREN?.length || 0, oldVNode.CHILDREN?.length || 0);
-        for (let i = 0; i < max; i++) {
-            updateElement(el, newVNode.CHILDREN?.[i], oldVNode.CHILDREN?.[i], i);
-        }
+        updateChildren(el, newVNode.children ?? [], oldVNode.children ?? []);
         return;
     }
     // Replace completely
     parent.replaceChild(createElement(newVNode), existing);
+}
+/** Update children, prioritize key, then fall back to index */
+function updateChildren(parent, newChildren, oldChildren) {
+    const oldKeyMap = new Map();
+    const getKey = (child, idx) => {
+        if (typeof child === 'string') {
+            return idx;
+        }
+        if (child.key) {
+            return child.key;
+        }
+        else {
+            return idx;
+        }
+    };
+    oldChildren.forEach((child, idx) => {
+        oldKeyMap.set(getKey(child, idx), {
+            vnode: child,
+            index: idx,
+            ref: parent.childNodes[idx] // the index can change later, need to remember the ref here.
+        });
+    });
+    newChildren.forEach((child, idx) => {
+        let key = getKey(child, idx);
+        let matched = oldKeyMap.get(key);
+        if (matched) {
+            let newNode; // TODO update is not complete, this is why we need new node for key
+            if (typeof key === 'string') {
+                newNode = createElement(child);
+                parent.insertBefore(newNode, parent.childNodes[idx] || null);
+            }
+            else {
+                updateElement(parent, child, matched.vnode, matched.index);
+                newNode = parent.childNodes[matched.index];
+                oldKeyMap.delete(key);
+                // move when necessary
+                if (parent.childNodes[idx] !== newNode) {
+                    parent.insertBefore(newNode, parent.childNodes[idx] || null);
+                }
+            }
+        }
+        else {
+            parent.insertBefore(createElement(child), parent.childNodes[idx] || null);
+        }
+    });
+    // Remove leftovers
+    for (const { ref } of oldKeyMap.values()) {
+        parent.removeChild(ref);
+    }
 }

@@ -27,10 +27,10 @@ function rerender(model: Model) {
 
 function render(model: Model) {
   return {
-    TAG: "div", PROPS: { "class": "todou-container" },
-    CHILDREN: [
-      { TAG: "section", PROPS: { "class": "todoapp" },
-        CHILDREN: [
+    tag: "div", attrs: { "class": "todou-container" },
+    children: [
+      { tag: "section", attrs: { "class": "todoapp" },
+        children: [
           renderInput(model),
           renderEntries(model),
           renderControls(model)
@@ -44,11 +44,11 @@ function render(model: Model) {
 
 function renderInput(model: Model): VNode {
   return {
-    TAG: "header", PROPS: { "class": "header" },
-    CHILDREN: [
-      { TAG: "h1", CHILDREN: [ "Todou" ] },
-      { TAG: "input",
-        PROPS: {
+    tag: "header", attrs: { "class": "header" },
+    children: [
+      { tag: "h1", children: [ "Todou" ] },
+      { tag: "input",
+        attrs: {
           "class": "new-todo",
           placeholder: "What needs to be done?",
           autofocus: true,
@@ -82,26 +82,26 @@ function renderEntries(model: Model): VNode {
       default: return true;
     }
   };
+  console.log("render entries ", model);
 
   return {
-    TAG: "section", PROPS: { "class": "main", style: `visibility:${cssVisibility}` },
-    CHILDREN: [
-      { TAG: "input",
-        PROPS: {
+    tag: "section", attrs: { "class": "main", style: `visibility:${cssVisibility}` },
+    children: [
+      { tag: "input",
+        attrs: {
           "class": "toggle-all",
           "type": "checkbox",
-          name: "toggle",
           checked: allCompleted,
           onclick: (_: MouseEvent) => {
             checkAllEntries(model, !allCompleted)
           }
         }
       },
-      { TAG: "label", PROPS: { "for": "toggle-all" },
-        CHILDREN: [ "Mark all as complete" ]
+      { tag: "label", attrs: { "for": "toggle-all" },
+        children: [ "Mark all as complete" ]
       },
-      { TAG: "ul", PROPS: { "class": "todo-list" },
-        CHILDREN: entries.filter(isVisible).map(entry => renderEntry(model, entry))
+      { tag: "ul", attrs: { "class": "todo-list" },
+        children: entries.filter(isVisible).map(entry => renderEntry(model, entry))
       }
     ]
   }
@@ -114,12 +114,12 @@ function renderControls(model: Model): VNode {
   let entriesLeft = entries.length - entriesCompleted;
 
   return {
-    TAG: "footer",
-    PROPS: {
+    tag: "footer",
+    attrs: {
       "class": "footer",
-      ...(entries.length === 0 ? { hidden: "" } : {})
+      hidden: entries.length === 0,
     },
-    CHILDREN: [
+    children: [
       renderControlsCount(entriesLeft),
       renderControlsFilter(model, visibility),
       renderControlsClear(model, entriesCompleted)
@@ -130,9 +130,9 @@ function renderControls(model: Model): VNode {
 
 function renderControlsCount(entriesLeft: number): VNode {
   return {
-    TAG: "span", PROPS: { "class": "todo-count" },
-    CHILDREN: [
-      { TAG: "strong", CHILDREN: [ `${entriesLeft}` ] }, entriesLeft === 1 ? " item" : " items"
+    tag: "span", attrs: { "class": "todo-count" },
+    children: [
+      { tag: "strong", children: [ `${entriesLeft}` ] }, entriesLeft === 1 ? " item" : " items"
     ]
   }
 }
@@ -140,8 +140,8 @@ function renderControlsCount(entriesLeft: number): VNode {
 
 function renderControlsFilter(model: Model, visibility: Visibility): VNode {
   return {
-    TAG: "ul", PROPS: { "class": "filters"},
-    CHILDREN: [
+    tag: "ul", attrs: { "class": "filters"},
+    children: [
       visibilitySwap(model, "#/", "All", visibility),
       visibilitySwap(model, "#/active", "Active", visibility),
       visibilitySwap(model, "#/completed", "Completed", visibility),
@@ -152,14 +152,14 @@ function renderControlsFilter(model: Model, visibility: Visibility): VNode {
 
 function visibilitySwap(model: Model, uri: string, vis: Visibility, currentVis: Visibility): VNode {
   return {
-    TAG: "li",
-    PROPS: {
+    tag: "li",
+    attrs: {
       onclick: (_: MouseEvent) => {
         changeVisibility(model, vis);
       }
     },
-    CHILDREN: [
-      { TAG: "a", PROPS: { href: uri, "class": vis === currentVis ? "selected" : "" }, CHILDREN: [ vis ] }
+    children: [
+      { tag: "a", attrs: { href: uri, "class": vis === currentVis ? "selected" : "" }, children: [ vis ] }
     ]
   }
 }
@@ -167,14 +167,15 @@ function visibilitySwap(model: Model, uri: string, vis: Visibility, currentVis: 
 
 function renderControlsClear(model: Model, entriesCompleted: number): VNode {
   return {
-    TAG: "button",
-    PROPS: {
+    tag: "button",
+    attrs: {
       hidden: entriesCompleted === 0,
+      "class": "clear-completed",
       onclick: (_: MouseEvent) => {
         deleteCompletedEntries(model)
       }
     },
-    CHILDREN: [
+    children: [
       `Clear completed ${entriesCompleted}`
     ]
   }
@@ -183,28 +184,28 @@ function renderControlsClear(model: Model, entriesCompleted: number): VNode {
 
 function renderFooterInfo(): VNode {
   return {
-    TAG: "footer", PROPS: { "class": "info" },
-    CHILDREN: [
-      { TAG: "p", CHILDREN: [ "Double-click to edit a todo" ]},
+    tag: "footer", attrs: { "class": "info" },
+    children: [
+      { tag: "p", children: [ "Double-click to edit a todo" ]},
     ]
   }
 }
 
 
 function renderEntry(model: Model, entry: Entry): VNode {
-  console.log('re', entry);
 
   return {
-    TAG: "li",
-    PROPS: {
+    tag: "li",
+    key: `todo-${entry.id}`,
+    attrs: {
       "class": entry.completed ? "completed" : "",
       ...(entry.editing ? { editing: ""} : {})
     },
-    CHILDREN: [
-      { TAG: "div", PROPS: { "class": "view" },
-        CHILDREN: [
-          { TAG: "input",
-            PROPS: {
+    children: [
+      { tag: "div", attrs: { "class": "view" },
+        children: [
+          { tag: "input",
+            attrs: {
               "class": "toggle",
               "type": "checkbox",
               checked: entry.completed,
@@ -213,27 +214,26 @@ function renderEntry(model: Model, entry: Entry): VNode {
               },
             }
           },
-          { TAG: "label",
-            PROPS: {
+          { tag: "label",
+            attrs: {
               ondblclick: (_: MouseEvent) => {
                 editingEntry(model, entry.id, true)
               }
             },
-            CHILDREN: [ entry.description ]
+            children: [ entry.description ]
           },
-          { TAG: "button",
-            PROPS: {
+          { tag: "button",
+            attrs: {
               "class": "destroy",
               onclick: (_: MouseEvent) => {
-                console.log('de', entry);
                 deleteEntry(model, entry.id)
               }
             }
           }
         ]
       },
-      { TAG: "input",
-        PROPS: {
+      { tag: "input",
+        attrs: {
           "class": "edit",
           name: "title",
           value: entry.description,
@@ -259,7 +259,6 @@ function renderEntry(model: Model, entry: Entry): VNode {
 
 
 function addEntry(model: Model) {
-  console.log(addEntry)
   if (model.field !== "") {
     model.entries.push({
       id: model.nextId++,
@@ -274,14 +273,12 @@ function addEntry(model: Model) {
 
 
 function updateField(model: Model, str: string) {
-  console.log(updateField)
   model.field = str;
   rerender(model);
 }
 
 
 function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
-  console.log(editingEntry)
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.editing = isEditing;
@@ -296,7 +293,6 @@ function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
 
 
 function updateEntry(model: Model, id: EntryId, task: string) {
-  console.log(updateEntry)
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.description = task;
@@ -307,21 +303,19 @@ function updateEntry(model: Model, id: EntryId, task: string) {
 
 
 function deleteEntry(model: Model, id: EntryId) {
-  console.log(deleteEntry)
   model.entries = model.entries.filter(entry => entry.id !== id);
   rerender(model);
 }
 
 
 function deleteCompletedEntries(model: Model) {
-  console.log(deleteCompletedEntries)
   model.entries = model.entries.filter(entry => !entry.completed);
   rerender(model);
 }
 
 
 function checkEntry(model: Model, id: EntryId, isCompleted: boolean) {
-  console.log(checkEntry, isCompleted)
+  console.log("check Entry: ", id);
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.completed = isCompleted
@@ -332,7 +326,6 @@ function checkEntry(model: Model, id: EntryId, isCompleted: boolean) {
 
 
 function checkAllEntries(model: Model, isCompleted: boolean) {
-  console.log(checkAllEntries)
   model.entries.forEach(entry => {
     entry.completed = isCompleted
   });
@@ -341,7 +334,6 @@ function checkAllEntries(model: Model, isCompleted: boolean) {
 
 
 function changeVisibility(model: Model, visibility: Visibility) {
-  console.log(changeVisibility)
   model.visibility = visibility
   rerender(model);
 }
