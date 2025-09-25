@@ -246,11 +246,11 @@ function editingEntry(model, id, isEditing) {
             entry.editing = isEditing;
         }
     });
+    rerender(model);
     let ele = document.getElementById(`todo-${id}`);
     if (ele) {
         ele.focus();
     }
-    rerender(model);
 }
 function updateEntry(model, id, task) {
     model.entries.forEach(entry => {

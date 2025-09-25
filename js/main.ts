@@ -284,11 +284,13 @@ function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
       entry.editing = isEditing;
     }
   })
+
+  rerender(model);
+
   let ele = document.getElementById(`todo-${id}`);
   if (ele) {
     ele.focus();
   }
-  rerender(model);
 }
 
 
