@@ -60,6 +60,7 @@ function renderInput(model: Model): VNode {
   );
 }
 
+
 function renderEntries(model: Model): VNode {
   const { visibility, entries } = model;
   const allCompleted = entries.reduce(
@@ -107,6 +108,7 @@ function renderControls(model: Model): VNode {
   );
 }
 
+
 function renderControlsCount(entriesLeft: number): VNode {
   return (
     <span class="todo-count">
@@ -114,6 +116,7 @@ function renderControlsCount(entriesLeft: number): VNode {
     </span>
   );
 }
+
 
 function renderControlsFilter(model: Model, visibility: Visibility): VNode {
   return (
@@ -148,7 +151,6 @@ function renderControlsClear(model: Model, entriesCompleted: number): VNode {
     </button>
   );
 }
-
 
 
 function renderFooterInfo(): VNode {

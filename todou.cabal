@@ -64,12 +64,17 @@ library
     -- other-extensions:
     build-depends:
         base ^>=4.18.2.1
+      , aeson
+      , amazonka
+      , amazonka-s3
+      , async
       , bytestring
+      , containers
       , directory
       , file-embed
       , filepath
-      , containers
       , scotty
+      , sqlite-simple
       , text
       , time
       , wai
