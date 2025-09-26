@@ -164,7 +164,7 @@ function renderEntry(model: Model, entry: Entry): VNode {
   const classes = [
     entry.completed ? "completed" : "",
     entry.editing ? "editing" : ""
-  ].filter(Boolean).join("");
+  ].filter(Boolean).join(" ");
 
   return (
     <li key={`todo-${entry.id}`} class={classes}>

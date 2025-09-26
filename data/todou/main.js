@@ -72,7 +72,7 @@ function renderEntry(model, entry) {
     const classes = [
         entry.completed ? "completed" : "",
         entry.editing ? "editing" : ""
-    ].filter(Boolean).join("");
+    ].filter(Boolean).join(" ");
     return (h("li", { key: `todo-${entry.id}`, class: classes },
         h("div", { class: "view" },
             h("input", { class: "toggle", type: "checkbox", checked: entry.completed, onclick: () => checkEntry(model, entry.id, !entry.completed) }),
