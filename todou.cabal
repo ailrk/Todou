@@ -77,9 +77,11 @@ library
       , sqlite-simple
       , text
       , time
+      , lucid
       , wai
       , wai-extra
       , warp
+      , http-types
 
     hs-source-dirs:   src
     default-language: Haskell2010

@@ -1,4 +1,7 @@
 import { newVdom, h } from "./vdom.js";
+/*
+ * Render
+ */
 function renderTodou(model) {
     return (h("div", { class: "todou-container" },
         h("section", { class: "todoapp" },
@@ -85,28 +88,36 @@ function renderEntry(model, entry) {
                 updateEntry(model, entry.id, ev.target.value);
             }, onblur: () => editingEntry(model, entry.id, false) })));
 }
-function addEntry(model) {
-    if (model.field !== "") {
-        model.entries.push({
-            id: model.nextId++,
-            description: model.field,
-            editing: false,
-            completed: false
-        });
-    }
+/*
+ * Model
+ */
+async function addEntry(model) {
+    if (model.field === "")
+        return;
+    let newEntry = {
+        id: model.nextId,
+        description: model.field,
+        editing: false,
+        completed: false
+    };
+    await addEntryAPI(model.date, newEntry.id, newEntry.description);
+    model.nextId++;
     model.field = "";
+    model.entries.push(newEntry);
     vdom.render();
 }
 function updateField(model, str) {
     model.field = str;
     vdom.render();
 }
-function editingEntry(model, id, isEditing) {
-    model.entries.forEach(entry => {
-        if (entry.id === id) {
-            entry.editing = isEditing;
-        }
-    });
+async function editingEntry(model, id, isEditing) {
+    let entry = model.entries.filter(e => e.id === id).at(0);
+    if (!entry)
+        return;
+    entry.editing = isEditing;
+    if (!isEditing) {
+        await updateEntryAPI(model.date, id, entry.completed, entry.description);
+    }
     vdom.render();
     let ele = document.getElementById(`todo-${id}`);
     if (ele) {
@@ -114,6 +125,7 @@ function editingEntry(model, id, isEditing) {
     }
 }
 function updateEntry(model, id, task) {
+    console.log('update');
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.description = task;
@@ -121,15 +133,18 @@ function updateEntry(model, id, task) {
     });
     vdom.render();
 }
-function deleteEntry(model, id) {
+async function deleteEntry(model, id) {
+    await deleteEntryAPI(model.date, id);
     model.entries = model.entries.filter(entry => entry.id !== id);
     vdom.render();
 }
-function deleteCompletedEntries(model) {
+async function deleteCompletedEntries(model) {
+    await deleteCompletedEntriesAPI(model.date);
     model.entries = model.entries.filter(entry => !entry.completed);
     vdom.render();
 }
-function checkEntry(model, id, isCompleted) {
+async function checkEntry(model, id, isCompleted) {
+    await updateEntryAPI(model.date, id, isCompleted);
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.completed = isCompleted;
@@ -137,7 +152,8 @@ function checkEntry(model, id, isCompleted) {
     });
     vdom.render();
 }
-function checkAllEntries(model, isCompleted) {
+async function checkAllEntries(model, isCompleted) {
+    await updateEntriesAPI(model.date, isCompleted);
     model.entries.forEach(entry => {
         entry.completed = isCompleted;
     });
@@ -147,17 +163,78 @@ function changeVisibility(model, visibility) {
     model.visibility = visibility;
     vdom.render();
 }
-let vdom = newVdom({
-    model: {
-        entries: [],
-        visibility: "All",
-        field: "",
-        nextId: 0
-    },
-    render: renderTodou,
-    root: document.getElementById("app")
-});
+/*
+ * API
+ */
+async function addEntryAPI(date, id, description) {
+    let result = await fetch(`/entry/add/${date}/${id}`, { method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: description
+    });
+    if (!result.ok) {
+        throw new Error(`HTTP Error ${result.status}`);
+    }
+    return result.json();
+}
+async function updateEntryAPI(date, id, completed, description) {
+    const params = new URLSearchParams();
+    if (completed !== undefined) {
+        params.set("completed", String(completed));
+    }
+    if (description !== undefined) {
+        params.set("description", String(description));
+    }
+    let result = await fetch(`/entry/update/${date}/${id}?${params}`, { method: "PUT" });
+    if (!result.ok) {
+        throw new Error(`HTTP Error ${result.status}`);
+    }
+    return result.json();
+}
+async function updateEntriesAPI(date, completed, description) {
+    const params = new URLSearchParams();
+    if (completed !== undefined) {
+        params.set("completed", String(completed));
+    }
+    if (description !== undefined) {
+        params.set("description", String(description));
+    }
+    let result = await fetch(`/entry/update/${date}/?${params}`, { method: "PUT" });
+    if (!result.ok) {
+        throw new Error(`HTTP Error ${result.status}`);
+    }
+    return result.json();
+}
+async function deleteEntryAPI(date, id) {
+    let result = await fetch(`/entry/delete/${date}/${id}`, { method: "DELETE" });
+    if (!result.ok) {
+        throw new Error(`HTTP Error ${result.status}`);
+    }
+    return result.json();
+}
+async function deleteCompletedEntriesAPI(date) {
+    let result = await fetch(`/entry/delete/${date}?completed`, { method: "DELETE" });
+    if (!result.ok) {
+        throw new Error(`HTTP Error ${result.status}`);
+    }
+    return result.json();
+}
+/*
+ * Main
+ */
 function main() {
+    let el = document.getElementById("model");
+    if (!el) {
+        throw Error("missing initial model");
+    }
+    let model = JSON.parse(el.textContent);
+    vdom = newVdom({
+        model: model,
+        render: renderTodou,
+        root: document.getElementById("app")
+    });
     vdom.render();
 }
+let vdom;
 main();

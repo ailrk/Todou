@@ -4,21 +4,24 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- Backend for Todou app
 --
--- A Toudu is a list of Todos, in which is a list of entries. A todo
+-- A Todou is a list of Todos, in which is a list of entries. A todo
 -- represents the todo list of a single day.
 module Todou where
 
 import Control.Applicative (Alternative((<|>)), asum)
-import Control.Monad (unless, when, forM_)
+import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar)
+import Control.Concurrent.MVar (MVar, newMVar, takeMVar, putMVar, modifyMVar_)
+import Control.Exception (try, SomeException, Exception (..))
+import Control.Monad (unless, when, forM_, forever, join)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Aeson (ToJSON(..), (.=), FromJSON(..), (.:))
 import Data.Aeson qualified as Aeson
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.Char (isSpace)
 import Data.FileEmbed qualified as FileEmbed
 import Data.Function ((&))
 import Data.Functor ((<&>))
-import Data.IORef (IORef, readIORef, newIORef, modifyIORef')
 import Data.List (stripPrefix)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -28,13 +31,25 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Text.Lazy qualified as LText
-import Data.Time (Day, defaultTimeLocale, parseTimeM, formatTime)
+import Data.Time (Day, defaultTimeLocale, parseTimeM, formatTime, getCurrentTime, UTCTime (..))
+import Debug.Trace (traceShow)
+import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_)
+import Lucid qualified
+import Network.HTTP.Types (status500)
+import Network.Wai.Middleware.RequestLogger (logStdout)
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.Environment (getArgs)
-import System.FilePath (takeExtension, (</>))
+import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
-import Web.Scotty (get, scotty, html, raw, setHeader, post, queryParam, Parsable(..), json, ActionM, body)
-import Data.ByteString (ByteString)
+import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe)
+
+
+----------------------------------------
+-- Constant
+----------------------------------------
+
+flushPeriod :: Int
+flushPeriod = 5 * 1000000
 
 
 ----------------------------------------
@@ -42,7 +57,9 @@ import Data.ByteString (ByteString)
 ----------------------------------------
 
 
-newtype EntryId = EntryId Int deriving (Show)
+-- | EntryId unique on each todou file per day. To universally
+-- identify an entry you need date and the entryId.
+newtype EntryId = EntryId Int deriving (Show, Eq, Ord)
 
 
 instance ToJSON EntryId where
@@ -103,12 +120,41 @@ instance FromJSON Todo where
       <*> pure True -- if the client sends us a Todo it must be dirty
 
 
--- | In memory representation of the todo storage layer.
-data Toudu = Toudu
+-- | In memory buffer of the persisted todo data.
+data TodoBuffer = TodoBuffer
   { todos       :: Map Day (Maybe Todo)
   , dirtyCounts :: Int
   }
   deriving Show
+
+
+deleteEntry :: EntryId -> Todo -> Todo
+deleteEntry entryId todo = todo { entries = filter (\e -> e.entryId /= entryId) todo.entries, dirty = True } :: Todo
+
+
+updateEntry :: EntryId -> (Entry -> Entry) -> Todo -> Todo
+updateEntry entryId f todo =
+  todo { entries = fmap (\entry -> if entry.entryId == entryId then f entry else entry) todo.entries
+       , dirty   = True
+       }
+
+
+updateTodo :: Day -> (Todo -> Todo) -> TodoBuffer -> TodoBuffer
+updateTodo date f buffer =
+ buffer
+    { dirtyCounts = buffer.dirtyCounts + 1
+    , todos = Map.update (\todo -> Just (mkDirty . f <$> todo)) date buffer.todos
+    }
+  where
+    mkDirty todo = todo { dirty = True}
+
+
+insertTodo :: Day -> Todo -> TodoBuffer -> TodoBuffer
+insertTodo date todo buffer =
+  buffer
+    { dirtyCounts = buffer.dirtyCounts + 1
+    , todos = Map.insert date (Just todo { dirty = True }) buffer.todos
+    }
 
 
 dumpTodo :: Todo -> Text
@@ -129,10 +175,10 @@ dumpDate date = Text.unlines
 
 
 dumpEntry :: Entry -> Text
-dumpEntry (Entry { entryId = EntryId entryId, description, completed })= Text.unlines
+dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = traceShow description $ Text.unlines
   [ "[entry]"
-  , "id =" <> Text.pack (show entryId)
-  , "description = \"" <> description <> "\""
+  , "id = " <> Text.pack (show entryId)
+  , "description = " <> description
   , "completed = " <> if completed then "true" else "false"
   ]
 
@@ -300,6 +346,13 @@ instance Parsable Day where
       Nothing -> Left  "Invalid date format. expecting: %Y-%m-%d"
 
 
+instance Parsable EntryId where
+  parseParam s =
+    case readMaybe (Text.unpack . LText.toStrict $ s) of
+      Just n -> Right (EntryId n)
+      Nothing -> Left "Invalid EntryId"
+
+
 ----------------------------------------
 -- Handle
 ----------------------------------------
@@ -317,9 +370,9 @@ data HandleType
 
 -- | Storage handle
 data Handle (a :: HandleType) where
-  FileSystemHandle :: FilePath -> IORef Toudu -> Handle FileSystem
-  S3Handle         :: IORef Toudu -> Handle S3
-  Sqlite3Handle    :: IORef Toudu -> Handle Sqlite3
+  FileSystemHandle :: FilePath -> MVar TodoBuffer -> Handle FileSystem
+  S3Handle         :: MVar TodoBuffer -> Handle S3
+  Sqlite3Handle    :: MVar TodoBuffer -> Handle Sqlite3
 
 
 data SomeHandle = forall a . SomeHandle (Handle a)
@@ -331,14 +384,15 @@ createHandle :: StorageOption -> IO SomeHandle
 createHandle (StorageFileSystem dir) = do
   files <- filter (\path -> takeExtension path == ".todou") <$> listDirectory dir
   let todos =
-        foldr (\path acc ->
-                  case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" path of
+        foldr (\path acc -> do
+                  let dateStr = takeBaseName path
+                  case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" dateStr of
                     Just day -> Map.insert day Nothing acc
                     Nothing -> acc
               )
               mempty
               files
-  ref <- newIORef Toudu { todos = todos, dirtyCounts = 0 }
+  ref <- newMVar TodoBuffer { todos = todos, dirtyCounts = 0 }
   pure . SomeHandle $ FileSystemHandle dir ref
 
 createHandle (StorageS3 _) = do
@@ -350,54 +404,58 @@ createHandle (StorageSqlite3 _) = do
 createHandle StorageNull = error "impossible"
 
 
-getToudu :: SomeHandle -> IO Toudu
-getToudu (SomeHandle (FileSystemHandle _ toudo )) = readIORef toudo
-getToudu (SomeHandle (S3Handle toudo ))           = readIORef toudo
-getToudu (SomeHandle (Sqlite3Handle toudo ))      = readIORef toudo
+getTodoBufferMVar :: SomeHandle -> MVar TodoBuffer
+getTodoBufferMVar (SomeHandle (FileSystemHandle _ todouBufferMvar )) = todouBufferMvar
+getTodoBufferMVar (SomeHandle (S3Handle todouBufferMvar ))           = todouBufferMvar
+getTodoBufferMVar (SomeHandle (Sqlite3Handle todouBufferMvar ))      = todouBufferMvar
 
 
-updateToudu :: SomeHandle -> (Toudu -> Toudu) -> IO ()
-updateToudu (SomeHandle (FileSystemHandle _ toudo )) f = modifyIORef' toudo f
-updateToudu (SomeHandle (S3Handle toudo ))           f = modifyIORef' toudo f
-updateToudu (SomeHandle (Sqlite3Handle toudo ))      f = modifyIORef' toudo f
-
-
+-- | Load Todo if it's not already cached in TodoBuffer.
 loadTodo :: SomeHandle -> Day -> IO (Maybe Todo)
 
-loadTodo (SomeHandle (FileSystemHandle dir toudoRef)) date = do
-  toudo <- readIORef toudoRef
-  case Map.lookup date toudo.todos of
-    Just (Just todo) -> pure (Just todo)
-    Just Nothing -> do
-      let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-      let path = dir </> dateStr </> ".toudo"
-      parseTodo <$> Text.readFile path
-    Nothing -> pure Nothing
+loadTodo (SomeHandle (FileSystemHandle dir todouBufferMvar)) date = do
+  modifyMVar_ todouBufferMvar \buffer -> do
+    case Map.lookup date buffer.todos of
+      Just (Just _) -> pure buffer
+      Just Nothing -> do
+        let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
+        let path = dir </> dateStr <> ".todou"
+        mTodo <- parseTodo <$> Text.readFile path
+        case mTodo of
+          Just todo -> pure do
+            buffer { todos       = Map.alter (\_ -> Just (Just todo)) date buffer.todos
+                   , dirtyCounts = buffer.dirtyCounts + 1
+                   }
+          Nothing -> pure buffer
+      Nothing -> pure buffer
+  buffer <- readMVar todouBufferMvar
+  pure do
+    join (Map.lookup date buffer.todos)
 
-loadTodo (SomeHandle (S3Handle toudo)) date = do
+loadTodo (SomeHandle (S3Handle todouBufferMvar)) date = do
   undefined
 
-loadTodo (SomeHandle (Sqlite3Handle toudo)) date = do
+loadTodo (SomeHandle (Sqlite3Handle todouBufferMvar)) date = do
   undefined
+
 
 
 -- | Flush in memory todo to storage
 flush :: SomeHandle -> IO ()
 
-flush handle@(SomeHandle (FileSystemHandle dirPath toudoRef)) = do
-  do
-    toudo <- readIORef toudoRef
-    unless (toudo.dirtyCounts == 0) do
-      forM_ toudo.todos \case
+flush (SomeHandle (FileSystemHandle dirPath todouBufferMvar)) = do
+  modifyMVar_ todouBufferMvar \buffer -> do
+    unless (buffer.dirtyCounts == 0) do
+      forM_ buffer.todos \case
         Nothing -> pure ()
         Just (Todo { dirty = False }) -> pure ()
         Just todo@(Todo { date, dirty = True }) -> do
           let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-          let path = dirPath </> dateStr </> ".toudo"
+          let path = dirPath </> dateStr <> ".todou"
           Text.writeFile path (dumpTodo todo)
-  updateToudu handle \todou ->
-    todou { dirtyCounts = 0
-      , todos = (fmap . fmap) (\todo -> todo { dirty = False }) todou.todos
+    pure $ buffer
+      { dirtyCounts = 0
+      , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos
       }
 
 flush (SomeHandle (S3Handle _)) = undefined
@@ -410,9 +468,13 @@ flush (SomeHandle (Sqlite3Handle _)) = undefined
 ----------------------------------------
 
 
-flusher :: SomeHandle -> IO ()
-flusher = do
-  undefined
+spawnFlusher :: SomeHandle -> IO ThreadId
+spawnFlusher handle = forkIO . forever $ do
+  result <- try  do flush handle
+  case result of
+    Left (e :: SomeException) -> putStrLn (displayException e)
+    Right _ -> pure ()
+  threadDelay flushPeriod
 
 
 ----------------------------------------
@@ -441,6 +503,41 @@ instance ToJSON a => ToJSON (Err a) where
       ]
 
 
+-- | Frontend initial model
+data Model = Model
+  { entries    :: [Entry]
+  , visibility :: Text
+  , field      :: Text
+  , nextId     :: EntryId
+  , date       :: Text
+  }
+
+
+instance ToJSON Model where
+  toJSON model = Aeson.object
+    [ "entries"    .= model.entries
+    , "visibility" .= model.visibility
+    , "field"      .= model.field
+    , "nextId"     .= model.nextId
+    , "date"       .= model.date
+    ]
+
+
+todoToModel :: Todo -> Model
+todoToModel todo =
+  Model
+    { entries    = todo.entries
+    , visibility = "All"
+    , field      = ""
+    , nextId     = EntryId (lastId + 1)
+    , date       = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
+    }
+  where
+    EntryId lastId
+      | null todo.entries = EntryId 0
+      | otherwise        = maximum (fmap (.entryId) todo.entries)
+
+
 javascript :: ByteString -> ActionM ()
 javascript bytes = do
     setHeader "Content-Type" "application/javascript"
@@ -453,44 +550,168 @@ css bytes = do
     raw . ByteString.fromStrict $ bytes
 
 
+index :: Model -> Html ()
+index model = do
+  html_ [ lang_ "en" ] do
+    head_ do
+      meta_ [ charset_ "UTF-8" ]
+      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover" ]
+      meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
+      link_ [ rel_ "stylesheet", href_ "main.css" ]
+      title_ "Toudo"
+    body_ do
+      div_ [ id_ "app" ] mempty
+      script_ [ id_ "model" ] (Aeson.encode model)
+      script_ [ src_ "main.js", type_ "module" ] (mempty @Text)
+
+
+
 server :: Options -> SomeHandle -> IO ()
 server Options { port } handle = scotty port do
-  get "/" do html . LText.fromStrict . Text.decodeUtf8 $ $(FileEmbed.embedFile "data/todou/index.html")
+  middleware logStdout
+  get "/" do
+    today <- utctDay <$> liftIO getCurrentTime
+    redirect ("/" <> LText.pack (formatTime defaultTimeLocale  "%Y-%m-%d" today))
+
+
+  -- render the todo data for one date.
+  get "/:date" do
+    date <- captureParam @Day "date"
+    let todouBufferMvar = getTodoBufferMVar handle
+    buffer <- liftIO do
+      flush handle -- flush on refresh
+      takeMVar todouBufferMvar
+    case Map.lookup date buffer.todos of
+      Just (Just todo) -> do
+        liftIO $ putMVar todouBufferMvar buffer
+        html . Lucid.renderText $ index (todoToModel todo)
+      Just Nothing -> do
+        liftIO $ putMVar todouBufferMvar buffer
+        liftIO (loadTodo handle date) >>= \case
+          Just todo -> html . Lucid.renderText $ index (todoToModel todo)
+          Nothing -> do
+            status status500
+            text "Can't find the todo data"
+      Nothing -> do -- not in storage, create an empty one
+        let newTodo = Todo { entries = [], date = date, dirty = True }
+        liftIO $ putMVar todouBufferMvar buffer
+        html . Lucid.renderText $ index (todoToModel newTodo)
+
 
   get "/main.css" do css $(FileEmbed.embedFile "data/todou/main.css")
 
+
   get "/main.js" do javascript $(FileEmbed.embedFile "data/todou/main.js")
+
 
   get "/vdom.js" do javascript $(FileEmbed.embedFile "data/todou/vdom.js")
 
-  get "todo" do
-    date <- queryParam @Day "date"
-    toudo <- liftIO $ getToudu handle
-    case Map.lookup date toudo.todos of
-      Just (Just todo) -> json (Ok todo)
-      Just Nothing -> do
-        liftIO (loadTodo handle date) >>= \case
-          Just todo -> json (Ok todo)
-          Nothing -> json (Err @Text "todo doesn't exist")
-      Nothing -> json (Err @Text "todo doesn't exist")
 
-  post "todo" do
-    mTodo <- Aeson.decode @Todo <$> body
-    case mTodo of
-      Just todo -> do
-        liftIO do
-          updateToudu handle \todou ->
-            todou
-              { dirtyCounts = todou.dirtyCounts + 1
-              , todos =
-                  Map.update (\_ -> Just (Just todo))
-                    todo.date
-                    todou.todos
+  -- add a new entry
+  post "/entry/add/:date/:id" do
+    date        <- captureParam @Day "date"
+    entryId     <- captureParam @EntryId "id"
+    description <- Text.decodeUtf8 . ByteString.toStrict <$> body
+    let newEntry =
+          Entry
+            { entryId     = entryId
+            , description = description
+            , completed   = False
+            }
+    liftIO $ loadTodo handle date >>= \case
+      Just todo -> do -- update existing todo
+        let newTodo = todo
+              { entries = todo.entries <> [newEntry]
+              , dirty   = True
               }
-        json (Ok ())
+        modifyMVar_ (getTodoBufferMVar handle) (pure . updateTodo date (const newTodo))
+      Nothing -> do -- create new todo if necessary
+        let newTodo = Todo
+              { entries = [newEntry]
+              , date    = date, dirty = True
+              }
+        modifyMVar_ (getTodoBufferMVar handle) (pure . insertTodo date newTodo)
+    json (Ok ())
 
+
+  -- update an entry
+  put "/entry/update/:date/:id" do
+    date         <- captureParam @Day "date"
+    mEntryId     <- captureParamMaybe @EntryId "id"
+    mCompleted   <- queryParamMaybe "completed"
+    mDescription <- queryParamMaybe @Text "description"
+    let toNewEntry e = e
+          { completed   = fromMaybe e.completed mCompleted
+          , description = fromMaybe e.description mDescription
+          }
+    case mEntryId of
+      Just entryId -> do
+        hasChecked <- liftIO $ loadTodo handle date >>= \case
+          Just _ -> do
+            modifyMVar_ (getTodoBufferMVar handle)
+              $ pure
+              . updateTodo date (updateEntry entryId toNewEntry)
+            pure True
+          Nothing -> pure False
+        if hasChecked
+           then json (Ok ())
+           else json (Err @Text "todo data doesn't exist")
       Nothing -> do
-        json (Err @Text "failed to parse, expect a Todo")
+        hasChecked <- liftIO $ loadTodo handle date >>= \case
+          Just _ -> do
+            modifyMVar_ (getTodoBufferMVar handle)
+              (pure . updateTodo date (\todo -> todo { entries = fmap toNewEntry todo.entries }))
+            pure True
+          Nothing -> pure False
+        if hasChecked
+           then json (Ok ())
+           else json (Err @Text "todo data doesn't exist")
+
+
+  -- delete an entry
+  delete "/entry/delete/:date/:id" do
+    date    <- captureParam @Day "date"
+    entryId <- captureParam @EntryId "id"
+    hasDeleted <- liftIO $ loadTodo handle date >>= \case
+      Just _ -> do
+        modifyMVar_ (getTodoBufferMVar handle) (pure . updateTodo date (deleteEntry entryId))
+        pure True
+      Nothing -> pure False
+    if hasDeleted
+       then json (Ok ())
+       else json (Err @Text "can't find matching todo data")
+
+
+  -- delete completed entries
+  delete "/entry/delete/:date" do
+    date      <- captureParam @Day "date"
+    completed <- queryFlag "completed"
+    hasDeleted <- liftIO $ loadTodo handle date >>= \case
+      Just _
+        | completed -> do
+            modifyMVar_ (getTodoBufferMVar handle)
+              (pure . updateTodo date (\todo -> todo { entries = filter (not . (.completed)) todo.entries } ))
+            pure True
+        | otherwise -> pure False
+      Nothing -> pure False
+    if hasDeleted
+       then json (Ok ())
+       else json (Err @Text "nothing is deleted")
+
+
+----------------------------------------
+-- Extended
+----------------------------------------
+
+
+queryFlag :: LText.Text -> ActionM Bool
+queryFlag name = do
+  mVal <- queryParamMaybe name :: ActionM (Maybe Text)
+  pure $ case mVal of
+    Just ""     -> True
+    Just "true" -> True
+    Just "1"    -> True
+    _           -> False
 
 
 ----------------------------------------
@@ -502,4 +723,5 @@ main :: IO ()
 main = do
   options <- getArgs >>= checkArgs . parseArgs
   handle <- createHandle options.storage
+  _ <- spawnFlusher handle
   server options handle
