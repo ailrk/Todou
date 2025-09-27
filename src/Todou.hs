@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- Backend for Todou app
 --
@@ -26,12 +27,17 @@ import Data.List (stripPrefix)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (iii, i)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Text.Lazy qualified as LText
 import Data.Time (Day, defaultTimeLocale, parseTimeM, formatTime, getCurrentTime, UTCTime (..))
+import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
+import Database.SQLite.Simple qualified as Sqlite
+import Database.SQLite.Simple.FromField (FromField(..))
+import Database.SQLite.Simple.ToField (ToField(..))
 import Debug.Trace (traceShow)
 import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_)
 import Lucid qualified
@@ -42,11 +48,6 @@ import System.Environment (getArgs)
 import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe)
-import Database.SQLite.Simple qualified as Sqlite
-import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..))
-import Database.SQLite.Simple.FromField (FromField(..))
-import Database.SQLite.Simple.ToField (ToField(..))
-import Data.String.Interpolate (iii)
 
 
 ----------------------------------------
@@ -75,14 +76,6 @@ instance FromJSON EntryId where
   parseJSON = fmap EntryId . parseJSON @Int
 
 
-instance ToField EntryId where
-  toField (EntryId entryId) = toField entryId
-
-
-instance FromField EntryId where
-  fromField = fmap EntryId <$> fromField @Int
-
-
 data Entry = Entry
   { entryId     :: EntryId
   , description :: Text
@@ -106,15 +99,6 @@ instance FromJSON Entry where
       <$> (o .: "id")
       <*> (o .: "description")
       <*> (o .: "completion")
-
-
-instance ToRow Entry where
-  toRow (Entry { entryId, description, completed }) =
-    toRow (entryId, description, completed)
-
-
-instance FromRow Entry where
-  fromRow = Entry <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field
 
 
 -- | Todo entries for a single day
@@ -143,11 +127,24 @@ instance FromJSON Todo where
 
 
 -- | In memory buffer of the persisted todo data.
-data TodoBuffer = TodoBuffer
+data Buffer = Buffer
   { todos       :: Map Day (Maybe Todo)
   , dirtyCounts :: Int
   }
   deriving Show
+
+
+pattern TodoNotExists :: Maybe (Maybe Todo)
+pattern TodoNotExists = Nothing
+
+
+pattern TodoNotLoaded :: Maybe (Maybe Todo)
+pattern TodoNotLoaded = Just Nothing
+
+
+pattern TodoLoaded :: Todo -> Maybe (Maybe Todo)
+pattern TodoLoaded a = Just (Just a)
+{-# COMPLETE TodoNotExists, TodoNotLoaded, TodoLoaded #-}
 
 
 deleteEntry :: EntryId -> Todo -> Todo
@@ -161,7 +158,7 @@ updateEntry entryId f todo =
        }
 
 
-updateTodo :: Day -> (Todo -> Todo) -> TodoBuffer -> TodoBuffer
+updateTodo :: Day -> (Todo -> Todo) -> Buffer -> Buffer
 updateTodo date f buffer =
  buffer
     { dirtyCounts = buffer.dirtyCounts + 1
@@ -171,7 +168,7 @@ updateTodo date f buffer =
     mkDirty todo = todo { dirty = True}
 
 
-insertTodo :: Day -> Todo -> TodoBuffer -> TodoBuffer
+insertTodo :: Day -> Todo -> Buffer -> Buffer
 insertTodo date todo buffer =
   buffer
     { dirtyCounts = buffer.dirtyCounts + 1
@@ -179,34 +176,8 @@ insertTodo date todo buffer =
     }
 
 
-dumpTodo :: Todo -> Text
-dumpTodo (Todo { entries, date })
-  = Text.unlines
-  . mconcat
-  $
-    [ [ dumpDate date ]
-    , fmap dumpEntry entries
-    ]
-
-
-dumpDate :: Day -> Text
-dumpDate date = Text.unlines
-  [ "[date]"
-  , Text.pack ("date = " <> formatTime defaultTimeLocale  "%Y-%m-%d" date)
-  ]
-
-
-dumpEntry :: Entry -> Text
-dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = traceShow description $ Text.unlines
-  [ "[entry]"
-  , "id = " <> Text.pack (show entryId)
-  , "description = " <> description
-  , "completed = " <> if completed then "true" else "false"
-  ]
-
-
 ----------------------------------------
--- Parsing
+-- Domain.FileSystem
 ----------------------------------------
 
 
@@ -293,6 +264,72 @@ parseTodo txt = do
     }
 
 
+dumpTodo :: Todo -> Text
+dumpTodo (Todo { entries, date })
+  = Text.unlines
+  . mconcat
+  $
+    [ [ dumpDate date ]
+    , fmap dumpEntry entries
+    ]
+
+
+dumpDate :: Day -> Text
+dumpDate date = Text.unlines
+  [ "[date]"
+  , Text.pack ("date = " <> formatTime defaultTimeLocale  "%Y-%m-%d" date)
+  ]
+
+
+dumpEntry :: Entry -> Text
+dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = traceShow description $ Text.unlines
+  [ "[entry]"
+  , "id = " <> Text.pack (show entryId)
+  , "description = " <> description
+  , "completed = " <> if completed then "true" else "false"
+  ]
+
+
+----------------------------------------
+-- Domain.Sqlite3
+----------------------------------------
+
+
+instance ToField EntryId where
+  toField (EntryId entryId) = toField entryId
+
+
+instance FromField EntryId where
+  fromField = fmap EntryId <$> fromField @Int
+
+
+instance ToRow Entry where
+  toRow (Entry { entryId, description, completed }) =
+    toRow (entryId, description, completed)
+
+
+instance FromRow Entry where
+  fromRow = Entry <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field
+
+
+createSqliteSchema :: Sqlite.Connection -> IO ()
+createSqliteSchema conn = do
+  Sqlite.execute_ conn [i| PRAGMA foreign_keys = ON; |]
+  Sqlite.execute_ conn [i| CREATE TABLE IF NOT EXISTS todo ( date TEXT PRIMARY KEY, UNIQUE(date)); |]
+  Sqlite.execute_ conn [iii|
+      CREATE TABLE IF NOT EXISTS entry
+        ( id          INTEGER KEY NOT NULL
+        , description TEXT NOT NULL
+        , completed   BOOLEAN NOT NULL
+        , todo_date   INTEGER NOT NULL
+        , UNIQUE(id, todo_date)
+        , FOREIGN KEY(todo_date) REFERENCES todo(date) ON DELETE CASCADE
+        );
+    |]
+  Sqlite.execute_ conn [i| CREATE INDEX IF NOT EXISTS idx_entry_todo_date ON entry(todo_date); |]
+  Sqlite.execute_ conn [i| CREATE INDEX IF NOT EXISTS idx_entry_todo_completed ON entry(todo_date, completed); |]
+
+
 ----------------------------------------
 -- Options
 ----------------------------------------
@@ -350,7 +387,8 @@ checkArgs options = do
       unless dirExists do
         error ("invalid options, storage directory " <> dir <> " is invalid")
     StorageS3 _ -> error "not implemented"
-    StorageSqlite3 _ -> error "not implemented"
+    StorageSqlite3 _ -> do
+      pure ()
   when (options.port < 1024 || options.port > 65535) do
     error ("invalid port number " <> show options.port)
   pure options
@@ -392,9 +430,9 @@ data HandleType
 
 -- | Storage handle
 data Handle (a :: HandleType) where
-  FileSystemHandle :: FilePath -> MVar TodoBuffer -> Handle FileSystem
-  S3Handle         :: Sqlite.Connection -> MVar TodoBuffer -> Handle S3
-  Sqlite3Handle    :: MVar TodoBuffer -> Handle Sqlite3
+  FileSystemHandle :: FilePath -> MVar Buffer -> Handle FileSystem
+  Sqlite3Handle    :: Sqlite.Connection -> MVar Buffer -> Handle S3
+  S3Handle         :: MVar Buffer -> Handle Sqlite3
 
 
 data SomeHandle = forall a . SomeHandle (Handle a)
@@ -402,122 +440,130 @@ data SomeHandle = forall a . SomeHandle (Handle a)
 
 -- | Create a new handle with all state required to operate the storage.
 createHandle :: StorageOption -> IO SomeHandle
+createHandle options = do
+  case options of
+    StorageFileSystem dir -> do
+      files <- filter (\path -> takeExtension path == ".todou") <$> listDirectory dir
+      let todos =
+            foldr (\path acc -> do
+                      let dateStr = takeBaseName path
+                      case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" dateStr of
+                        Just day -> Map.insert day Nothing acc
+                        Nothing -> acc
+                  )
+                  mempty
+                  files
+      ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
+      pure . SomeHandle $ FileSystemHandle dir ref
+
+    StorageSqlite3 connStr -> do
+      conn <- Sqlite.open connStr
+      createSqliteSchema conn
+      dates <- Sqlite.query_ @(Only Text) conn "SELECT date FROM todo"
+      let todos =
+            foldr (\(Only date) acc -> do
+                      case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (Text.unpack date) of
+                        Just day -> Map.insert day Nothing acc
+                        Nothing -> acc
+                  )
+                  mempty
+                  dates
+      ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
+      pure . SomeHandle $ Sqlite3Handle conn ref
+
+    StorageS3 _ -> do
+      pure . SomeHandle $ S3Handle undefined
 
 
-createHandle (StorageFileSystem dir) = do
-  files <- filter (\path -> takeExtension path == ".todou") <$> listDirectory dir
-  let todos =
-        foldr (\path acc -> do
-                  let dateStr = takeBaseName path
-                  case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" dateStr of
-                    Just day -> Map.insert day Nothing acc
-                    Nothing -> acc
-              )
-              mempty
-              files
-  ref <- newMVar TodoBuffer { todos = todos, dirtyCounts = 0 }
-  pure . SomeHandle $ FileSystemHandle dir ref
+    StorageNull ->
+      error "impossible"
 
 
-createHandle (StorageSqlite3 connStr) = do
-  conn <- Sqlite.open connStr
-  Sqlite.execute_ conn
-    [iii|
-      PRAGMA foreign_keys = ON;
-
-      CREATE TABLE IF NOT EXISTS todo
-        ( id   INTEGER PRIMARY KEY
-        , date TEXT NOT NULL
-        )
-
-      CREATE TABLE IF NOT EXISTS entry
-        ( id          INTEGER PRIMARY KEY
-        , todo_id     INTEGER NOT NULL
-        , description TEXT NOT NULL
-        , completed   BOOLEAN NOT NULL
-        , FOREIGN KEY(todo_id) REFERENCES todo(id) ON DELETE CASCADE
-        )
-
-      CREATE INDEX IF NOT EXISTS idx_entry_todo_id ON entry(todo_id);
-      CREATE INDEX IF NOT EXISTS idx_entry_todo_completed ON entry(todo_id, completed);
-    |]
-  dates <- Sqlite.query_ @(Only Text) conn "SELECT date FROM todo"
-  let todos =
-        foldr (\(Only date) acc -> do
-                  case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (Text.unpack date) of
-                    Just day -> Map.insert day Nothing acc
-                    Nothing -> acc
-              )
-              mempty
-              dates
-  ref <- newMVar TodoBuffer { todos = todos, dirtyCounts = 0 }
-  pure . SomeHandle $ S3Handle conn ref
+getBufferMVar :: SomeHandle -> MVar Buffer
+getBufferMVar (SomeHandle (FileSystemHandle _ bufferMvar )) = bufferMvar
+getBufferMVar (SomeHandle (Sqlite3Handle _ bufferMvar ))    = bufferMvar
+getBufferMVar (SomeHandle (S3Handle  bufferMvar ))          = bufferMvar
 
 
-createHandle (StorageS3 _) = do
-  pure . SomeHandle $ Sqlite3Handle undefined
-
-
-createHandle StorageNull = error "impossible"
-
-
-getTodoBufferMVar :: SomeHandle -> MVar TodoBuffer
-getTodoBufferMVar (SomeHandle (FileSystemHandle _ todouBufferMvar )) = todouBufferMvar
-getTodoBufferMVar (SomeHandle (S3Handle _ todouBufferMvar ))           = todouBufferMvar
-getTodoBufferMVar (SomeHandle (Sqlite3Handle todouBufferMvar ))      = todouBufferMvar
-
-
--- | Load Todo if it's not already cached in TodoBuffer.
+-- | Load Todo if it's not already cached in Buffer.
 loadTodo :: SomeHandle -> Day -> IO (Maybe Todo)
-
-loadTodo (SomeHandle (FileSystemHandle dir todouBufferMvar)) date = do
-  modifyMVar_ todouBufferMvar \buffer -> do
+loadTodo handle date = do
+  let bufferMVar = getBufferMVar handle
+  modifyMVar_ bufferMVar \buffer -> do
     case Map.lookup date buffer.todos of
-      Just (Just _) -> pure buffer
-      Just Nothing -> do
+      TodoLoaded _ -> pure buffer
+      TodoNotExists -> pure buffer
+      TodoNotLoaded -> do
         let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-        let path = dir </> dateStr <> ".todou"
-        mTodo <- parseTodo <$> Text.readFile path
-        case mTodo of
-          Just todo -> pure do
-            buffer { todos       = Map.alter (\_ -> Just (Just todo)) date buffer.todos
-                   , dirtyCounts = buffer.dirtyCounts + 1
-                   }
-          Nothing -> pure buffer
-      Nothing -> pure buffer
-  buffer <- readMVar todouBufferMvar
+        case handle of
+          SomeHandle (FileSystemHandle dir _) -> do
+            mTodo <- parseTodo <$> Text.readFile (dir </> dateStr <> ".todou")
+            case mTodo of
+              Just todo -> pure do
+                buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
+                       , dirtyCounts = buffer.dirtyCounts + 1
+                       }
+              Nothing -> pure buffer
+          SomeHandle (Sqlite3Handle conn _) -> do
+            entries <- Sqlite.query conn
+              [i|SELECT (id, description, completed) FROM entry WHERE todo_date = (?); |] (Only dateStr)
+            let todo = Todo
+                  { entries = entries
+                  , date    = date
+                  , dirty   = False
+                  }
+            pure do
+              buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
+                     , dirtyCounts = buffer.dirtyCounts + 1
+                     }
+          SomeHandle (S3Handle _) -> undefined
+  buffer <- readMVar bufferMVar
   pure do
     join (Map.lookup date buffer.todos)
-
-loadTodo (SomeHandle (S3Handle _ todouBufferMvar)) date = do
-  undefined
-
-loadTodo (SomeHandle (Sqlite3Handle todouBufferMvar)) date = do
-  undefined
-
 
 
 -- | Flush in memory todo to storage
 flush :: SomeHandle -> IO ()
-
-flush (SomeHandle (FileSystemHandle dirPath todouBufferMvar)) = do
-  modifyMVar_ todouBufferMvar \buffer -> do
+flush handle = do
+  let bufferMVar = getBufferMVar handle
+  modifyMVar_ bufferMVar \buffer -> do
     unless (buffer.dirtyCounts == 0) do
       forM_ buffer.todos \case
         Nothing -> pure ()
         Just (Todo { dirty = False }) -> pure ()
-        Just todo@(Todo { date, dirty = True }) -> do
+        Just todo@(Todo { entries, date, dirty = True }) -> do
           let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-          let path = dirPath </> dateStr <> ".todou"
-          Text.writeFile path (dumpTodo todo)
+          case handle of
+            SomeHandle (FileSystemHandle dirPath _) -> do
+              let path = dirPath </> dateStr <> ".todou"
+              Text.writeFile path (dumpTodo todo)
+            SomeHandle (Sqlite3Handle conn _) -> do
+              Sqlite.execute conn
+                [iii|
+                      INSERT INTO todo (date) VALUES (?)
+                      ON CONFLICT(date) DO NOTHING;
+                |] (Only date)
+
+              let ids          = fmap (.entryId) entries
+              let placeholders = Query ("(" <> Text.intercalate "," (replicate (length ids) "?") <> ")")
+              Sqlite.execute conn
+                (" DELETE FROM entry where todo_date = (?) AND id NOT IN " <> placeholders)
+                (Only date :.  ids)
+
+              Sqlite.executeMany conn
+                [iii|
+                      INSERT INTO entry (todo_date, id, description, completed) VALUES (?,?,?,?)
+                      ON CONFLICT(id, todo_date) DO UPDATE SET
+                        description = excluded.description,
+                        completed   = excluded.completed;
+                |]
+                $ fmap (Only date :.) entries
+            SomeHandle (S3Handle _) -> do
+              undefined
     pure $ buffer
       { dirtyCounts = 0
       , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos
       }
-
-flush (SomeHandle (S3Handle _ _)) = undefined
-
-flush (SomeHandle (Sqlite3Handle _)) = undefined
 
 
 ----------------------------------------
@@ -634,24 +680,24 @@ server Options { port } handle = scotty port do
   -- render the todo data for one date.
   get "/:date" do
     date <- captureParam @Day "date"
-    let todouBufferMvar = getTodoBufferMVar handle
+    let bufferMvar = getBufferMVar handle
     buffer <- liftIO do
       flush handle -- flush on refresh
-      takeMVar todouBufferMvar
+      takeMVar bufferMvar
     case Map.lookup date buffer.todos of
-      Just (Just todo) -> do
-        liftIO $ putMVar todouBufferMvar buffer
+      TodoLoaded todo -> do
+        liftIO $ putMVar bufferMvar buffer
         html . Lucid.renderText $ index (todoToModel todo)
-      Just Nothing -> do
-        liftIO $ putMVar todouBufferMvar buffer
+      TodoNotLoaded -> do
+        liftIO $ putMVar bufferMvar buffer
         liftIO (loadTodo handle date) >>= \case
           Just todo -> html . Lucid.renderText $ index (todoToModel todo)
           Nothing -> do
             status status500
             text "Can't find the todo data"
-      Nothing -> do -- not in storage, create an empty one
+      TodoNotExists -> do -- not in storage, create an empty one
         let newTodo = Todo { entries = [], date = date, dirty = True }
-        liftIO $ putMVar todouBufferMvar buffer
+        liftIO $ putMVar bufferMvar buffer
         html . Lucid.renderText $ index (todoToModel newTodo)
 
 
@@ -681,13 +727,13 @@ server Options { port } handle = scotty port do
               { entries = todo.entries <> [newEntry]
               , dirty   = True
               }
-        modifyMVar_ (getTodoBufferMVar handle) (pure . updateTodo date (const newTodo))
+        modifyMVar_ (getBufferMVar handle) (pure . updateTodo date (const newTodo))
       Nothing -> do -- create new todo if necessary
         let newTodo = Todo
               { entries = [newEntry]
               , date    = date, dirty = True
               }
-        modifyMVar_ (getTodoBufferMVar handle) (pure . insertTodo date newTodo)
+        modifyMVar_ (getBufferMVar handle) (pure . insertTodo date newTodo)
     json (Ok ())
 
 
@@ -705,7 +751,7 @@ server Options { port } handle = scotty port do
       Just entryId -> do
         hasChecked <- liftIO $ loadTodo handle date >>= \case
           Just _ -> do
-            modifyMVar_ (getTodoBufferMVar handle)
+            modifyMVar_ (getBufferMVar handle)
               $ pure
               . updateTodo date (updateEntry entryId toNewEntry)
             pure True
@@ -716,7 +762,7 @@ server Options { port } handle = scotty port do
       Nothing -> do
         hasChecked <- liftIO $ loadTodo handle date >>= \case
           Just _ -> do
-            modifyMVar_ (getTodoBufferMVar handle)
+            modifyMVar_ (getBufferMVar handle)
               (pure . updateTodo date (\todo -> todo { entries = fmap toNewEntry todo.entries }))
             pure True
           Nothing -> pure False
@@ -731,7 +777,7 @@ server Options { port } handle = scotty port do
     entryId <- captureParam @EntryId "id"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
       Just _ -> do
-        modifyMVar_ (getTodoBufferMVar handle) (pure . updateTodo date (deleteEntry entryId))
+        modifyMVar_ (getBufferMVar handle) (pure . updateTodo date (deleteEntry entryId))
         pure True
       Nothing -> pure False
     if hasDeleted
@@ -746,7 +792,7 @@ server Options { port } handle = scotty port do
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
       Just _
         | completed -> do
-            modifyMVar_ (getTodoBufferMVar handle)
+            modifyMVar_ (getBufferMVar handle)
               (pure . updateTodo date (\todo -> todo { entries = filter (not . (.completed)) todo.entries } ))
             pure True
         | otherwise -> pure False
