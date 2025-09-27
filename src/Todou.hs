@@ -42,6 +42,11 @@ import System.Environment (getArgs)
 import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe)
+import Database.SQLite.Simple qualified as Sqlite
+import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..))
+import Database.SQLite.Simple.FromField (FromField(..))
+import Database.SQLite.Simple.ToField (ToField(..))
+import Data.String.Interpolate (iii)
 
 
 ----------------------------------------
@@ -70,6 +75,14 @@ instance FromJSON EntryId where
   parseJSON = fmap EntryId . parseJSON @Int
 
 
+instance ToField EntryId where
+  toField (EntryId entryId) = toField entryId
+
+
+instance FromField EntryId where
+  fromField = fmap EntryId <$> fromField @Int
+
+
 data Entry = Entry
   { entryId     :: EntryId
   , description :: Text
@@ -93,6 +106,15 @@ instance FromJSON Entry where
       <$> (o .: "id")
       <*> (o .: "description")
       <*> (o .: "completion")
+
+
+instance ToRow Entry where
+  toRow (Entry { entryId, description, completed }) =
+    toRow (entryId, description, completed)
+
+
+instance FromRow Entry where
+  fromRow = Entry <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field
 
 
 -- | Todo entries for a single day
@@ -305,9 +327,9 @@ parseArgs args
           Just arg -> do
             let storage = fromMaybe (error ("unknown storage argument " <> arg)) $
                   asum
-                    [ stripPrefix "dir:"     arg <&> StorageFileSystem
-                    , stripPrefix "s3:"      arg <&> StorageS3
-                    , stripPrefix "sqlite3:" arg <&> StorageSqlite3
+                    [ stripPrefix "dir:"    arg <&> StorageFileSystem
+                    , stripPrefix "s3:"     arg <&> StorageS3
+                    , stripPrefix "sqlite:" arg <&> StorageSqlite3
                     ]
             opts { storage = storage }
           Nothing  ->
@@ -371,7 +393,7 @@ data HandleType
 -- | Storage handle
 data Handle (a :: HandleType) where
   FileSystemHandle :: FilePath -> MVar TodoBuffer -> Handle FileSystem
-  S3Handle         :: MVar TodoBuffer -> Handle S3
+  S3Handle         :: Sqlite.Connection -> MVar TodoBuffer -> Handle S3
   Sqlite3Handle    :: MVar TodoBuffer -> Handle Sqlite3
 
 
@@ -380,6 +402,7 @@ data SomeHandle = forall a . SomeHandle (Handle a)
 
 -- | Create a new handle with all state required to operate the storage.
 createHandle :: StorageOption -> IO SomeHandle
+
 
 createHandle (StorageFileSystem dir) = do
   files <- filter (\path -> takeExtension path == ".todou") <$> listDirectory dir
@@ -395,18 +418,52 @@ createHandle (StorageFileSystem dir) = do
   ref <- newMVar TodoBuffer { todos = todos, dirtyCounts = 0 }
   pure . SomeHandle $ FileSystemHandle dir ref
 
-createHandle (StorageS3 _) = do
-  pure . SomeHandle $ S3Handle undefined
 
-createHandle (StorageSqlite3 _) = do
+createHandle (StorageSqlite3 connStr) = do
+  conn <- Sqlite.open connStr
+  Sqlite.execute_ conn
+    [iii|
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE IF NOT EXISTS todo
+        ( id   INTEGER PRIMARY KEY
+        , date TEXT NOT NULL
+        )
+
+      CREATE TABLE IF NOT EXISTS entry
+        ( id          INTEGER PRIMARY KEY
+        , todo_id     INTEGER NOT NULL
+        , description TEXT NOT NULL
+        , completed   BOOLEAN NOT NULL
+        , FOREIGN KEY(todo_id) REFERENCES todo(id) ON DELETE CASCADE
+        )
+
+      CREATE INDEX IF NOT EXISTS idx_entry_todo_id ON entry(todo_id);
+      CREATE INDEX IF NOT EXISTS idx_entry_todo_completed ON entry(todo_id, completed);
+    |]
+  dates <- Sqlite.query_ @(Only Text) conn "SELECT date FROM todo"
+  let todos =
+        foldr (\(Only date) acc -> do
+                  case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (Text.unpack date) of
+                    Just day -> Map.insert day Nothing acc
+                    Nothing -> acc
+              )
+              mempty
+              dates
+  ref <- newMVar TodoBuffer { todos = todos, dirtyCounts = 0 }
+  pure . SomeHandle $ S3Handle conn ref
+
+
+createHandle (StorageS3 _) = do
   pure . SomeHandle $ Sqlite3Handle undefined
+
 
 createHandle StorageNull = error "impossible"
 
 
 getTodoBufferMVar :: SomeHandle -> MVar TodoBuffer
 getTodoBufferMVar (SomeHandle (FileSystemHandle _ todouBufferMvar )) = todouBufferMvar
-getTodoBufferMVar (SomeHandle (S3Handle todouBufferMvar ))           = todouBufferMvar
+getTodoBufferMVar (SomeHandle (S3Handle _ todouBufferMvar ))           = todouBufferMvar
 getTodoBufferMVar (SomeHandle (Sqlite3Handle todouBufferMvar ))      = todouBufferMvar
 
 
@@ -432,7 +489,7 @@ loadTodo (SomeHandle (FileSystemHandle dir todouBufferMvar)) date = do
   pure do
     join (Map.lookup date buffer.todos)
 
-loadTodo (SomeHandle (S3Handle todouBufferMvar)) date = do
+loadTodo (SomeHandle (S3Handle _ todouBufferMvar)) date = do
   undefined
 
 loadTodo (SomeHandle (Sqlite3Handle todouBufferMvar)) date = do
@@ -458,7 +515,7 @@ flush (SomeHandle (FileSystemHandle dirPath todouBufferMvar)) = do
       , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos
       }
 
-flush (SomeHandle (S3Handle _)) = undefined
+flush (SomeHandle (S3Handle _ _)) = undefined
 
 flush (SomeHandle (Sqlite3Handle _)) = undefined
 

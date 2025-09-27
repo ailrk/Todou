@@ -73,6 +73,7 @@ library
       , directory
       , file-embed
       , filepath
+      , string-interpolate
       , scotty
       , sqlite-simple
       , text
