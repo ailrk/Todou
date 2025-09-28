@@ -9,17 +9,26 @@
 -- represents the todo list of a single day.
 module Todou where
 
+import Amazonka qualified
+import Amazonka.S3 qualified as Amazonka
+import Amazonka.S3.GetObject qualified
+import Amazonka.S3.ListObjectsV2 qualified as Amazonka
+import Amazonka.S3.Types.Object (Object(..))
+import Conduit qualified
 import Control.Applicative (Alternative((<|>)), asum)
 import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar)
 import Control.Concurrent.MVar (MVar, newMVar, takeMVar, putMVar, modifyMVar_)
 import Control.Exception (try, SomeException, Exception (..))
-import Control.Monad (unless, when, forM_, forever, join)
+import Control.Monad (unless, when, forM_, forever, join, void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Aeson (ToJSON(..), (.=), FromJSON(..), (.:))
 import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Char8 qualified as Char8
+import Data.ByteString.Lazy qualified as LBS
 import Data.Char (isSpace)
+import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -42,9 +51,11 @@ import Debug.Trace (traceShow)
 import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_)
 import Lucid qualified
 import Network.HTTP.Types (status500)
+import Network.URI qualified as URI
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.Environment (getArgs)
+import System.Environment qualified as Environment
 import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe)
@@ -53,6 +64,7 @@ import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, 
 ----------------------------------------
 -- Constant
 ----------------------------------------
+
 
 flushPeriod :: Int
 flushPeriod = 5 * 1000000
@@ -177,7 +189,7 @@ insertTodo date todo buffer =
 
 
 ----------------------------------------
--- Domain.FileSystem
+-- Parsing
 ----------------------------------------
 
 
@@ -331,6 +343,34 @@ createSqliteSchema conn = do
 
 
 ----------------------------------------
+-- Domain.S3
+----------------------------------------
+
+
+createS3Env :: IO Amazonka.Env
+createS3Env = do
+  mUrl <- lookupAWSEndpointURL
+  let setEndpointURL =
+        case mUrl of
+          Just url ->
+            case url.uriAuthority of
+              Nothing -> id
+              Just auth -> do
+                let host = Char8.pack auth.uriRegName
+                let port = fromMaybe 443 . readMaybe $ auth.uriPort
+                Amazonka.setEndpoint True host port
+          Nothing -> id
+  let service = setEndpointURL Amazonka.defaultService
+  Amazonka.configureService service <$> Amazonka.newEnv Amazonka.discover
+  where
+    lookupAWSEndpointURL = do
+      Environment.lookupEnv "AWS_ENDPOINT_URL" <&> \case
+        Nothing -> Nothing
+        Just "" -> Nothing
+        Just v  -> URI.parseURI v
+
+
+----------------------------------------
 -- Options
 ----------------------------------------
 
@@ -365,7 +405,7 @@ parseArgs args
             let storage = fromMaybe (error ("unknown storage argument " <> arg)) $
                   asum
                     [ stripPrefix "dir:"    arg <&> StorageFileSystem
-                    , stripPrefix "s3:"     arg <&> StorageS3
+                    , stripPrefix "s3:"     arg <&> StorageS3 . Text.pack
                     , stripPrefix "sqlite:" arg <&> StorageSqlite3
                     ]
             opts { storage = storage }
@@ -386,9 +426,8 @@ checkArgs options = do
       dirExists <- doesDirectoryExist dir
       unless dirExists do
         error ("invalid options, storage directory " <> dir <> " is invalid")
-    StorageS3 _ -> error "not implemented"
-    StorageSqlite3 _ -> do
-      pure ()
+    StorageS3 _ -> pure ()
+    StorageSqlite3 _ -> pure ()
   when (options.port < 1024 || options.port > 65535) do
     error ("invalid port number " <> show options.port)
   pure options
@@ -418,7 +457,7 @@ instance Parsable EntryId where
 ----------------------------------------
 
 
-type Bucket = String
+type Bucket = Text
 type ConnectionString = String
 
 
@@ -432,7 +471,7 @@ data HandleType
 data Handle (a :: HandleType) where
   FileSystemHandle :: FilePath -> MVar Buffer -> Handle FileSystem
   Sqlite3Handle    :: Sqlite.Connection -> MVar Buffer -> Handle S3
-  S3Handle         :: MVar Buffer -> Handle Sqlite3
+  S3Handle         :: Amazonka.Env -> Bucket -> MVar Buffer -> Handle Sqlite3
 
 
 data SomeHandle = forall a . SomeHandle (Handle a)
@@ -471,8 +510,22 @@ createHandle options = do
       ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
       pure . SomeHandle $ Sqlite3Handle conn ref
 
-    StorageS3 _ -> do
-      pure . SomeHandle $ S3Handle undefined
+    StorageS3 bucket -> do
+      env <- createS3Env
+
+      let request = Amazonka.newListObjectsV2 (Amazonka.BucketName bucket)
+      resp <- Amazonka.runResourceT $ Amazonka.send env request
+      let dates = fmap (\o -> coerce @_ @Text o.key) (fromMaybe []  resp.contents)
+      let todos =
+            foldr (\date acc -> do
+                      case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (Text.unpack date) of
+                        Just day -> Map.insert day Nothing acc
+                        Nothing -> acc
+                  )
+                  mempty
+                  dates
+      ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
+      pure . SomeHandle $ S3Handle env bucket ref
 
 
     StorageNull ->
@@ -482,7 +535,7 @@ createHandle options = do
 getBufferMVar :: SomeHandle -> MVar Buffer
 getBufferMVar (SomeHandle (FileSystemHandle _ bufferMvar )) = bufferMvar
 getBufferMVar (SomeHandle (Sqlite3Handle _ bufferMvar ))    = bufferMvar
-getBufferMVar (SomeHandle (S3Handle  bufferMvar ))          = bufferMvar
+getBufferMVar (SomeHandle (S3Handle _ _ bufferMvar ))       = bufferMvar
 
 
 -- | Load Todo if it's not already cached in Buffer.
@@ -516,7 +569,20 @@ loadTodo handle date = do
               buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
                      , dirtyCounts = buffer.dirtyCounts + 1
                      }
-          SomeHandle (S3Handle _) -> undefined
+          SomeHandle (S3Handle env bucket _) -> do
+            let request = Amazonka.newGetObject (Amazonka.BucketName bucket) (Amazonka.ObjectKey (Text.pack dateStr))
+            chunks <- Amazonka.runResourceT do
+              resp <- Amazonka.send env request
+              Conduit.runConduit $ resp.body.body Conduit..| Conduit.sinkList
+            let mTodo = parseTodo . Text.decodeUtf8 . LBS.toStrict . LBS.fromChunks $ chunks
+            case mTodo of
+              Just todo -> pure do
+                buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
+                       , dirtyCounts = buffer.dirtyCounts + 1
+                       }
+              Nothing -> pure buffer
+
+
   buffer <- readMVar bufferMVar
   pure do
     join (Map.lookup date buffer.todos)
@@ -543,13 +609,11 @@ flush handle = do
                       INSERT INTO todo (date) VALUES (?)
                       ON CONFLICT(date) DO NOTHING;
                 |] (Only date)
-
-              let ids          = fmap (.entryId) entries
+              let ids = fmap (.entryId) entries
               let placeholders = Query ("(" <> Text.intercalate "," (replicate (length ids) "?") <> ")")
               Sqlite.execute conn
                 (" DELETE FROM entry where todo_date = (?) AND id NOT IN " <> placeholders)
-                (Only date :.  ids)
-
+                (Only date :. ids)
               Sqlite.executeMany conn
                 [iii|
                       INSERT INTO entry (todo_date, id, description, completed) VALUES (?,?,?,?)
@@ -558,8 +622,13 @@ flush handle = do
                         completed   = excluded.completed;
                 |]
                 $ fmap (Only date :.) entries
-            SomeHandle (S3Handle _) -> do
-              undefined
+            SomeHandle (S3Handle env bucket _) -> do
+              let request = Amazonka.newPutObject
+                    (Amazonka.BucketName bucket)
+                    (Amazonka.ObjectKey (Text.pack dateStr))
+                    (Amazonka.toBody (dumpTodo todo))
+              void . Amazonka.runResourceT $ Amazonka.send env request
+
     pure $ buffer
       { dirtyCounts = 0
       , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos

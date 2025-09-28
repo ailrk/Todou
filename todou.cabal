@@ -74,6 +74,8 @@ library
       , file-embed
       , filepath
       , string-interpolate
+      , network-uri
+      , conduit
       , scotty
       , sqlite-simple
       , text

@@ -34,11 +34,13 @@ export type VNode
       _listeners?: Record<string, EventListener>
     };
 
+
 export interface VDom {
   root: HTMLElement,
   render: () => void,
   vroot?: VNode
 }
+
 
 /** Create a new vdom object. The object can be tweaked after creation */
 export function newVdom<Model>({ model, root, render }: { model: Model, root: HTMLElement, render: (model: Model) => VNode }): VDom {
