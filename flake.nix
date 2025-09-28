@@ -12,6 +12,9 @@
         haskell = prev.haskell // {
           packageOverrides = hfinal: hprev:
             prev.haskell.packageOverrides hfinal hprev // {
+
+              scotty = hprev.scotty_0_22;
+
               todou = (hfinal.callPackage ./default.nix {}).overrideAttrs (old: {
                 nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ final.upx ];
 

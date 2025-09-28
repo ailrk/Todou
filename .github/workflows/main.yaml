@@ -1,0 +1,39 @@
+name: Todou CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target to build"
+        required: true
+        type: choice
+        options:
+          - all
+
+jobs:
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Install nix"
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: "Build"
+        run: |
+          nix build
+
+      - name: "Upload binary"
+        uses: actions/upload-artifact@v4
+        with:
+          name: todou-linux-x86-64
+          path: ./result/bin/todou
