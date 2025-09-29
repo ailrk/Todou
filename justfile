@@ -28,14 +28,14 @@ profile:
 
 
 vis:
-    hp2ps -c -M filehub.hp
-    ps2pdf filehub.ps
+    hp2ps -c -M todou.hp
+    ps2pdf todou.ps
 
 
 clean:
     cabal clean
-    rm -f filehub.hp
-    rm -f filehub.ps
-    rm -f filehub.pdf
-    rm -f filehub.prof
-    rm -f filehub.aux
+    rm -f todou.hp
+    rm -f todou.ps
+    rm -f todou.pdf
+    rm -f todou.prof
+    rm -f todou.aux

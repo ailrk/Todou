@@ -67,7 +67,6 @@ library
       , aeson
       , amazonka
       , amazonka-s3
-      , async
       , bytestring
       , conduit
       , containers
@@ -82,6 +81,9 @@ library
       , string-interpolate
       , text
       , time
+      , jwt
+      , cryptonite
+      , cryptohash-sha256
       , wai
       , wai-extra
       , warp
