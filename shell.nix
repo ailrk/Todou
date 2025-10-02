@@ -14,6 +14,7 @@ hspkgs.shellFor {
     pkgs.zstd
     pkgs.zlib
     pkgs.pkg-config
+    pkgs.nodePackages.typescript
   ];
 
   shellHook = ''

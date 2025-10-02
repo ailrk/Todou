@@ -1,4 +1,4 @@
 build:
     #!/usr/bin/env bash
-    npx tsc
+    tsc
     cp ./*.css ./dist
