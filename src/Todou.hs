@@ -461,24 +461,14 @@ type Bucket = Text
 type ConnectionString = String
 
 
-data HandleType
-  = FileSystem
-  | S3
-  | Sqlite3
-
-
--- | Storage handle
-data Handle (a :: HandleType) where
-  FileSystemHandle :: FilePath -> MVar Buffer -> Handle FileSystem
-  Sqlite3Handle    :: Sqlite.Connection -> MVar Buffer -> Handle S3
-  S3Handle         :: Amazonka.Env -> Bucket -> MVar Buffer -> Handle Sqlite3
-
-
-data SomeHandle = forall a . SomeHandle (Handle a)
+data Handle
+  = FileSystemHandle FilePath (MVar Buffer)
+  | Sqlite3Handle Sqlite.Connection (MVar Buffer)
+  | S3Handle  Amazonka.Env Bucket (MVar Buffer)
 
 
 -- | Create a new handle with all state required to operate the storage.
-createHandle :: StorageOption -> IO SomeHandle
+createHandle :: StorageOption -> IO Handle
 createHandle options = do
   case options of
     StorageFileSystem dir -> do
@@ -493,7 +483,7 @@ createHandle options = do
                   mempty
                   files
       ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
-      pure . SomeHandle $ FileSystemHandle dir ref
+      pure $ FileSystemHandle dir ref
 
     StorageSqlite3 connStr -> do
       conn <- Sqlite.open connStr
@@ -508,7 +498,7 @@ createHandle options = do
                   mempty
                   dates
       ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
-      pure . SomeHandle $ Sqlite3Handle conn ref
+      pure $ Sqlite3Handle conn ref
 
     StorageS3 bucket -> do
       env <- createS3Env
@@ -525,21 +515,21 @@ createHandle options = do
                   mempty
                   dates
       ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
-      pure . SomeHandle $ S3Handle env bucket ref
+      pure $ S3Handle env bucket ref
 
 
     StorageNull ->
       error "impossible"
 
 
-getBufferMVar :: SomeHandle -> MVar Buffer
-getBufferMVar (SomeHandle (FileSystemHandle _ bufferMvar )) = bufferMvar
-getBufferMVar (SomeHandle (Sqlite3Handle _ bufferMvar ))    = bufferMvar
-getBufferMVar (SomeHandle (S3Handle _ _ bufferMvar ))       = bufferMvar
+getBufferMVar :: Handle -> MVar Buffer
+getBufferMVar ((FileSystemHandle _ bufferMvar )) = bufferMvar
+getBufferMVar ((Sqlite3Handle _ bufferMvar ))    = bufferMvar
+getBufferMVar ((S3Handle _ _ bufferMvar ))       = bufferMvar
 
 
 -- | Load Todo if it's not already cached in Buffer.
-loadTodo :: SomeHandle -> Day -> IO (Maybe Todo)
+loadTodo :: Handle -> Day -> IO (Maybe Todo)
 loadTodo handle date = do
   let bufferMVar = getBufferMVar handle
   modifyMVar_ bufferMVar \buffer -> do
@@ -549,7 +539,7 @@ loadTodo handle date = do
       TodoNotLoaded -> do
         let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
         case handle of
-          SomeHandle (FileSystemHandle dir _) -> do
+          FileSystemHandle dir _ -> do
             mTodo <- parseTodo <$> Text.readFile (dir </> dateStr <> ".todou")
             case mTodo of
               Just todo -> pure do
@@ -557,7 +547,7 @@ loadTodo handle date = do
                        , dirtyCounts = buffer.dirtyCounts + 1
                        }
               Nothing -> pure buffer
-          SomeHandle (Sqlite3Handle conn _) -> do
+          Sqlite3Handle conn _ -> do
             entries <- Sqlite.query conn
               [i|SELECT (id, description, completed) FROM entry WHERE todo_date = (?); |] (Only dateStr)
             let todo = Todo
@@ -569,7 +559,7 @@ loadTodo handle date = do
               buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
                      , dirtyCounts = buffer.dirtyCounts + 1
                      }
-          SomeHandle (S3Handle env bucket _) -> do
+          S3Handle env bucket _ -> do
             let request = Amazonka.newGetObject (Amazonka.BucketName bucket) (Amazonka.ObjectKey (Text.pack dateStr))
             chunks <- Amazonka.runResourceT do
               resp <- Amazonka.send env request
@@ -589,7 +579,7 @@ loadTodo handle date = do
 
 
 -- | Flush in memory todo to storage
-flush :: SomeHandle -> IO ()
+flush :: Handle -> IO ()
 flush handle = do
   let bufferMVar = getBufferMVar handle
   modifyMVar_ bufferMVar \buffer -> do
@@ -600,10 +590,10 @@ flush handle = do
         Just todo@(Todo { entries, date, dirty = True }) -> do
           let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
           case handle of
-            SomeHandle (FileSystemHandle dirPath _) -> do
+            FileSystemHandle dirPath _ -> do
               let path = dirPath </> dateStr <> ".todou"
               Text.writeFile path (dumpTodo todo)
-            SomeHandle (Sqlite3Handle conn _) -> do
+            Sqlite3Handle conn _ -> do
               Sqlite.execute conn
                 [iii|
                       INSERT INTO todo (date) VALUES (?)
@@ -622,7 +612,7 @@ flush handle = do
                         completed   = excluded.completed;
                 |]
                 $ fmap (Only date :.) entries
-            SomeHandle (S3Handle env bucket _) -> do
+            S3Handle env bucket _ -> do
               let request = Amazonka.newPutObject
                     (Amazonka.BucketName bucket)
                     (Amazonka.ObjectKey (Text.pack dateStr))
@@ -640,7 +630,7 @@ flush handle = do
 ----------------------------------------
 
 
-spawnFlusher :: SomeHandle -> IO ThreadId
+spawnFlusher :: Handle -> IO ThreadId
 spawnFlusher handle = forkIO . forever $ do
   result <- try  do flush handle
   case result of
@@ -738,7 +728,7 @@ index model = do
 
 
 
-server :: Options -> SomeHandle -> IO ()
+server :: Options -> Handle -> IO ()
 server Options { port } handle = scotty port do
   middleware logStdout
   get "/" do
