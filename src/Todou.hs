@@ -55,7 +55,7 @@ import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
 import Database.SQLite.Simple.ToField (ToField(..))
-import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_)
+import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_, sizes_)
 import Lucid qualified
 import Network.HTTP.Types (status500)
 import Network.URI qualified as URI
@@ -708,16 +708,12 @@ todoToModel todo =
       | otherwise        = maximum (fmap (.entryId) todo.entries)
 
 
-javascript :: ByteString -> ActionM ()
-javascript bytes = do
-    setHeader "Content-Type" "application/javascript"
-    raw . ByteString.fromStrict $ bytes
-
-
-css :: ByteString -> ActionM ()
-css bytes = do
-    setHeader "Content-Type" "text/css"
-    raw . ByteString.fromStrict $ bytes
+json', javascript, css, png, ico :: ByteString -> ActionM ()
+json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
+javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
+css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
+png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
+ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
 
 
 index :: Model -> Html ()
@@ -727,7 +723,13 @@ index model = do
       meta_ [ charset_ "UTF-8" ]
       meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover" ]
       meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
+      meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
+      link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
       link_ [ rel_ "stylesheet", href_ "main.css" ]
+      link_ [ rel_ "manifest", href_ "/manifest.json" ]
       title_ "Toudo"
     body_ do
       div_ [ id_ "app" ] mempty
@@ -792,13 +794,14 @@ server Options { port } handle = scotty port do
         html . Lucid.renderText $ index (todoToModel newTodo)
 
 
-  get "/main.css" do css $(FileEmbed.embedFile "data/todou/main.css")
-
-
-  get "/main.js" do javascript $(FileEmbed.embedFile "data/todou/main.js")
-
-
-  get "/vdom.js" do javascript $(FileEmbed.embedFile "data/todou/vdom.js")
+  get "/main.css"                     do css        $(FileEmbed.embedFile "data/todou/main.css")
+  get "/main.js"                      do javascript $(FileEmbed.embedFile "data/todou/main.js")
+  get "/vdom.js"                      do javascript $(FileEmbed.embedFile "data/todou/vdom.js")
+  get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-192x192.png")
+  get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-512x512.png")
+  get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFile "data/todou/apple-touch-icon.png")
+  get "/favicon.ico"                  do ico        $(FileEmbed.embedFile "data/todou/favicon.ico")
+  get "/manifest.json"                do json'      $(FileEmbed.embedFile "data/todou/manifest.json")
 
 
   -- add a new entry

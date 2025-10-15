@@ -221,6 +221,16 @@ async function deleteCompletedEntriesAPI(date) {
     return result.json();
 }
 /*
+ * PWA
+ */
+if ('serviceWorker' in navigator && window.top === window.self) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/serviceWorker.js', { type: "module" })
+            .then(reg => console.log('Service worker registered:', reg))
+            .catch(err => console.error('Service worker registration failed:', err));
+    });
+}
+/*
  * Main
  */
 function main() {

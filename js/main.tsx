@@ -383,6 +383,18 @@ async function deleteCompletedEntriesAPI(date: string) {
 
 
 /*
+ * PWA
+ */
+if ('serviceWorker' in navigator && window.top === window.self) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register( '/static/serviceWorker.js', { type: "module" })
+      .then(reg => console.log('Service worker registered:', reg))
+      .catch(err => console.error('Service worker registration failed:', err));
+  });
+}
+
+
+/*
  * Main
  */
 
@@ -392,7 +404,7 @@ function main() {
   if (!el) {
     throw Error("missing initial model")
   }
-  let model: Model = JSON.parse(el.textContent)
+  let model: Model = JSON.parse(el.textContent!)
 
   vdom = newVdom({
     model: model,

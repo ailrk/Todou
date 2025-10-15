@@ -2,3 +2,5 @@ build:
     #!/usr/bin/env bash
     tsc
     cp ./*.css ./dist
+    cp manifest.json ./dist
+    cp ./icons/* ./dist
