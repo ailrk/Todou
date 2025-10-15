@@ -39,3 +39,8 @@ clean:
     rm -f todou.pdf
     rm -f todou.prof
     rm -f todou.aux
+
+
+watch:
+  ghcid -c "cabal repl todou" -s ":set args --storage=sqlite::memory: --port=5555"  -T "Todou.main" -W
+

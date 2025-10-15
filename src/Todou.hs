@@ -42,12 +42,19 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Text.Lazy qualified as LText
-import Data.Time (Day, defaultTimeLocale, parseTimeM, formatTime, getCurrentTime, UTCTime (..))
+import Data.Time
+    ( Day,
+      defaultTimeLocale,
+      parseTimeM,
+      formatTime,
+      getCurrentTime,
+      utcToLocalTime,
+      utc,
+      LocalTime(..) )
 import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
 import Database.SQLite.Simple.ToField (ToField(..))
-import Debug.Trace (traceShow)
 import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_)
 import Lucid qualified
 import Network.HTTP.Types (status500)
@@ -58,7 +65,8 @@ import System.Environment (getArgs)
 import System.Environment qualified as Environment
 import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
-import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe)
+import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
+import Web.Cookie (parseCookies)
 
 
 ----------------------------------------
@@ -294,7 +302,7 @@ dumpDate date = Text.unlines
 
 
 dumpEntry :: Entry -> Text
-dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = traceShow description $ Text.unlines
+dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = Text.unlines
   [ "[entry]"
   , "id = " <> Text.pack (show entryId)
   , "description = " <> description
@@ -613,11 +621,11 @@ flush handle = do
                 |]
                 $ fmap (Only date :.) entries
             S3Handle env bucket _ -> do
-              let request = Amazonka.newPutObject
+              let req = Amazonka.newPutObject
                     (Amazonka.BucketName bucket)
                     (Amazonka.ObjectKey (Text.pack dateStr))
                     (Amazonka.toBody (dumpTodo todo))
-              void . Amazonka.runResourceT $ Amazonka.send env request
+              void . Amazonka.runResourceT $ Amazonka.send env req
 
     pure $ buffer
       { dirtyCounts = 0
@@ -731,9 +739,33 @@ index model = do
 server :: Options -> Handle -> IO ()
 server Options { port } handle = scotty port do
   middleware logStdout
+
+
   get "/" do
-    today <- utctDay <$> liftIO getCurrentTime
-    redirect ("/" <> LText.pack (formatTime defaultTimeLocale  "%Y-%m-%d" today))
+    mCookies <- header "Cookie"
+    let getTimezone = lookup "timezone" . parseCookies . Text.encodeUtf8 . LText.toStrict
+    liftIO $ print mCookies
+    case mCookies of
+      Just cookies
+        | Just tz <- getTimezone cookies -> do
+            now <- liftIO getCurrentTime
+            let timeZone  = fromMaybe utc (readMaybe (Char8.unpack tz))
+            let localTime = utcToLocalTime timeZone now
+            liftIO $ print timeZone
+            redirect ("/" <> LText.pack (formatTime defaultTimeLocale  "%Y-%m-%d" localTime.localDay))
+      _ -> do
+        html . Lucid.renderText $ do
+          html_ do
+            head_ do
+              script_ do
+                [iii| let timezone = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+                        .formatToParts(new Date())
+                        .find(part => part.type === 'timeZoneName')
+                        .value;
+                      document.cookie = "timezone=; path=/; max-age=0";
+                      document.cookie = `timezone=${timezone}; path=/; max-age=${7*24*60*60}`;
+                      window.location.href = "/"
+                    |]
 
 
   -- render the todo data for one date.

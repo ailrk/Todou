@@ -62,7 +62,7 @@ function renderInput(model: Model): VNode {
           updateField(model, (ev.target as HTMLInputElement).value);
         }}
       />
-    </header>
+   </header>
   );
 }
 
