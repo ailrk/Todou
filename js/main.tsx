@@ -21,6 +21,10 @@ export interface Model {
   field: string;
   nextId: EntryId;
   date: string;
+  showCalendar: boolean;
+
+  // local
+  calendarDate: Date;
 }
 
 
@@ -30,14 +34,23 @@ export interface Model {
 
 
 function renderTodou(model: Model): VNode {
+  const date      = model.calendarDate;
+  const formatted = date.toISOString().split('T')[0];
+
   return (
     <div class="todou-container">
+      <nav onclick={(_: MouseEvent) => { toggleCalendar(model); }} >
+        <span>
+          {formatted}
+        </span>
+      </nav>
       <section class="todoapp">
         {renderInput(model)}
         {renderEntries(model)}
         {renderControls(model)}
       </section>
-      {renderFooterInfo()}
+      { renderFooterInfo() }
+      { renderCalendar(model) }
     </div>
   );
 }
@@ -46,7 +59,6 @@ function renderTodou(model: Model): VNode {
 function renderInput(model: Model): VNode {
   return (
     <header class="header">
-      <h1>Todou</h1>
       <input
         class="new-todo"
         placeholder="What needs to be done?"
@@ -212,6 +224,73 @@ function renderEntry(model: Model, entry: Entry): VNode {
 }
 
 
+function renderCalendar(model: Model) {
+  const date           = model.calendarDate;
+  const year           = date.getFullYear();
+  const month          = date.getMonth();
+  const firstDay       = new Date(year, month, 1);
+  const lastDay        = new Date(year, month + 1, 0);
+  const daysInMonth    = lastDay.getDate();
+  const firstDayOfWeek = firstDay.getDay();
+  const formatted      = date.toISOString().split('T')[0];
+
+  function today(i: number) {
+    let now = new Date();
+    if (year != now.getFullYear()) return "";
+    if (month != now.getMonth()) return "";
+    if (i != now.getDate()) return "";
+    return "today"
+  }
+
+  return (
+    <div
+      class="calendar-modal"
+      hidden={!model.showCalendar}
+      onclick={(ev: MouseEvent) => {
+        if (document.querySelector('.calendar-content')!.contains(ev.target as Node)) return;
+        toggleCalendar(model, false)
+      }} >
+      <div class="calendar-content">
+        <span class="calendar-header">
+          <button onclick={(_: MouseEvent) => { prevCalendar(model)} }>
+            <i class='bx bxs-left-arrow'></i>
+          </button>
+          <h1>{formatted}</h1>
+          <button onclick={(_: MouseEvent) => { nextCalendar(model)} }>
+            <i class='bx bxs-right-arrow' ></i>
+          </button>
+        </span>
+
+        <ol class="calendar">
+          <li class="day-name">Sun</li> <li class="day-name">Mon</li> <li class="day-name">Tue</li>
+          <li class="day-name">Wed</li> <li class="day-name">Thu</li> <li class="day-name">Fri</li>
+          <li class="day-name">Sat</li>
+
+          {
+            Array
+            .from({ length: daysInMonth }, (_, i) => i + 1)
+            .map(i => {
+              return (
+                <li
+                  class={today(i)}
+                  style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
+                  onclick={(_: MouseEvent) => {
+                    window.location.href = `/${year}-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                  }}>
+                    { i }
+                </li>
+              );
+            })
+          }
+
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+
+
 /*
  * Model
  */
@@ -308,6 +387,37 @@ function changeVisibility(model: Model, visibility: Visibility) {
 }
 
 
+function toggleCalendar(model: Model, show?: boolean) {
+  if (show !== undefined) {
+    model.showCalendar = show;
+  } else {
+    model.showCalendar = !model.showCalendar;
+  }
+
+  // reset date to the path date.
+  if (!model.showCalendar) {
+    model.calendarDate = getDateFromPath();
+  }
+
+  vdom.render();
+}
+
+
+function nextCalendar(model: Model) {
+  let date = model.calendarDate;
+  date.setMonth((date.getMonth() + 1));
+  vdom.render()
+}
+
+
+function prevCalendar(model: Model) {
+  let date = model.calendarDate;
+  date.setMonth((date.getMonth() - 1));
+  vdom.render()
+}
+
+
+
 /*
  * API
  */
@@ -382,12 +492,28 @@ async function deleteCompletedEntriesAPI(date: string) {
 }
 
 
+
+/*
+ * MISC
+ */
+
+
+function getDateFromPath(defaultDate = new Date()) {
+  const match = window.location.pathname.match(/(\d{4}-\d{2}-\d{2})/);
+  if (!match) return defaultDate;
+  const [year, month, day] = match[1].split("-").map(Number);
+  const date = new Date(year, month-1, day);
+  return isNaN(date.getTime()) ? defaultDate : date;
+}
+
+
+
 /*
  * PWA
  */
 if ('serviceWorker' in navigator && window.top === window.self) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register( '/static/serviceWorker.js', { type: "module" })
+    navigator.serviceWorker.register( '/sw.js', { type: "module" })
       .then(reg => console.log('Service worker registered:', reg))
       .catch(err => console.error('Service worker registration failed:', err));
   });
@@ -404,7 +530,12 @@ function main() {
   if (!el) {
     throw Error("missing initial model")
   }
+
   let model: Model = JSON.parse(el.textContent!)
+  model.calendarDate = getDateFromPath();
+  console.log('main', model.calendarDate)
+
+  window.indexedDB.open('todou')
 
   vdom = newVdom({
     model: model,

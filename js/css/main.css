@@ -33,6 +33,20 @@ body {
 	font-weight: 300;
 }
 
+* {
+    text-size-adjust: none;
+}
+
+input, textarea, select {
+  font-size: 16px;
+}
+
+
+button, a {
+  touch-action: manipulation;
+}
+
+
 :focus {
 	outline: 0;
 }
@@ -41,9 +55,36 @@ body {
 	display: none;
 }
 
+
+/* nav * { */
+/*   outline: 1px dashed rgba(255,0,0,0.3); */
+/* } */
+
+
+nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1em;
+  margin: 40px 0 30px 0;
+  cursor: pointer;
+  -webkit-font-smoothing: antialiased;
+}
+
+
+nav span {
+  font-size: 30px;
+  font-weight: 700;
+  color: #af2f2f6e;
+  margin: 0; /* remove default margin for flex alignment */
+  padding-top: 1px;
+  -webkit-font-smoothing: antialiased;
+}
+
+
 .todoapp {
 	background: #fff;
-	margin: 130px 10px 40px 10px;
+	margin: 20px 10px 40px 10px;
 	position: relative;
 	box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.2),
 	            0 25px 50px 0 rgba(0, 0, 0, 0.1);
@@ -65,19 +106,6 @@ body {
 	font-style: italic;
 	font-weight: 300;
 	color: #e6e6e6;
-}
-
-.todoapp h1 {
-	position: absolute;
-	top: -155px;
-	width: 100%;
-	font-size: 100px;
-	font-weight: 300;
-	text-align: center;
-	color: rgba(175, 47, 47, 0.15);
-	-webkit-text-rendering: optimizeLegibility;
-	-moz-text-rendering: optimizeLegibility;
-	text-rendering: optimizeLegibility;
 }
 
 .new-todo,
@@ -104,6 +132,7 @@ body {
 	border: none;
 	background: rgba(0, 0, 0, 0.003);
 	box-shadow: inset 0 -2px 1px rgba(0,0,0,0.03);
+  color: #8e7c7cf2;
 }
 
 .main {
@@ -151,6 +180,7 @@ body {
 	position: relative;
 	font-size: 24px;
 	border-bottom: 1px solid #ededed;
+  color: #8e7c7cf2;
 }
 
 .todo-list li:last-child {
@@ -374,3 +404,112 @@ html .clear-completed:active {
 	}
 }
 
+
+.calendar-modal {
+  position: fixed;
+  top: 0px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+  background-color: rgba(0,0,0,0.6);
+  padding: 0;
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+  z-index: 10;
+}
+
+
+.calendar-content {
+  width: 280px;
+  height: 240px;
+  margin: auto;
+  margin-top: 10px;
+  border: 1px solid #888;
+  background-color: #f5f5f5;
+  padding: 20px 20px 20px 15px;
+  animation-name: fadeIn;
+  animation-duration: 100ms;
+  animation-timing-function: ease-in;
+}
+
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  list-style: none;
+  color: #8e7c7cf2;
+}
+
+
+.calendar ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+
+.calendar li {
+  padding: 2px;
+  cursor: pointer;
+  z-index: 0;
+}
+
+
+.day-name {
+  background: #eee;
+}
+
+
+.today {
+  color: white;
+}
+
+
+.today::before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  display: block;
+  aspect-ratio: 1 / 1;
+  transform: translate(-10%, -10%);
+  background: #af2f2f6e;
+  z-index: -1;
+}
+
+
+.calendar-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+	color: #af2f2f6e;
+}
+
+.calendar-header h1 {
+  text-align: center;
+  width: 220px;
+  line-height: 1;
+  padding-top: 5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+
+@supports (-webkit-touch-callout: none) {
+  /* Likely WebKit (Safari, iOS) */
+  .calendar-header h1 {
+    padding-top: 0;
+  }
+}
+
+
+.calendar-header button {
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+
+@keyframes fadeIn {
+  0% {opacity: 0;}
+  100% {opacity: 1;}
+}

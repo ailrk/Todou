@@ -3,16 +3,20 @@ import { newVdom, h } from "./vdom.js";
  * Render
  */
 function renderTodou(model) {
+    const date = model.calendarDate;
+    const formatted = date.toISOString().split('T')[0];
     return (h("div", { class: "todou-container" },
+        h("nav", { onclick: (_) => { toggleCalendar(model); } },
+            h("span", null, formatted)),
         h("section", { class: "todoapp" },
             renderInput(model),
             renderEntries(model),
             renderControls(model)),
-        renderFooterInfo()));
+        renderFooterInfo(),
+        renderCalendar(model)));
 }
 function renderInput(model) {
     return (h("header", { class: "header" },
-        h("h1", null, "Todou"),
         h("input", { class: "new-todo", placeholder: "What needs to be done?", autofocus: true, value: model.field, name: "newTodo", onkeydown: (ev) => {
                 if (ev.key === "Enter") {
                     addEntry(model);
@@ -87,6 +91,57 @@ function renderEntry(model, entry) {
             }, oninput: (ev) => {
                 updateEntry(model, entry.id, ev.target.value);
             }, onblur: () => editingEntry(model, entry.id, false) })));
+}
+function renderCalendar(model) {
+    const date = model.calendarDate;
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const firstDayOfWeek = firstDay.getDay();
+    const formatted = date.toISOString().split('T')[0];
+    function today(i) {
+        let now = new Date();
+        if (year != now.getFullYear())
+            return "";
+        if (month != now.getMonth())
+            return "";
+        if (i != now.getDate())
+            return "";
+        return "today";
+    }
+    return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, onclick: (ev) => {
+            if (document.querySelector('.calendar-content').contains(ev.target))
+                return;
+            toggleCalendar(model, false);
+        } },
+        h("div", { class: "calendar-content" },
+            h("span", { class: "calendar-header" },
+                h("button", { onclick: (_) => { prevCalendar(model); } },
+                    h("i", { class: 'bx bxs-left-arrow' })),
+                h("h1", null, formatted),
+                h("button", { onclick: (_) => { nextCalendar(model); } },
+                    h("i", { class: 'bx bxs-right-arrow' }))),
+            h("ol", { class: "calendar" },
+                h("li", { class: "day-name" }, "Sun"),
+                " ",
+                h("li", { class: "day-name" }, "Mon"),
+                " ",
+                h("li", { class: "day-name" }, "Tue"),
+                h("li", { class: "day-name" }, "Wed"),
+                " ",
+                h("li", { class: "day-name" }, "Thu"),
+                " ",
+                h("li", { class: "day-name" }, "Fri"),
+                h("li", { class: "day-name" }, "Sat"),
+                Array
+                    .from({ length: daysInMonth }, (_, i) => i + 1)
+                    .map(i => {
+                    return (h("li", { class: today(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
+                            window.location.href = `/${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                        } }, i));
+                })))));
 }
 /*
  * Model
@@ -163,6 +218,29 @@ function changeVisibility(model, visibility) {
     model.visibility = visibility;
     vdom.render();
 }
+function toggleCalendar(model, show) {
+    if (show !== undefined) {
+        model.showCalendar = show;
+    }
+    else {
+        model.showCalendar = !model.showCalendar;
+    }
+    // reset date to the path date.
+    if (!model.showCalendar) {
+        model.calendarDate = getDateFromPath();
+    }
+    vdom.render();
+}
+function nextCalendar(model) {
+    let date = model.calendarDate;
+    date.setMonth((date.getMonth() + 1));
+    vdom.render();
+}
+function prevCalendar(model) {
+    let date = model.calendarDate;
+    date.setMonth((date.getMonth() - 1));
+    vdom.render();
+}
 /*
  * API
  */
@@ -221,11 +299,22 @@ async function deleteCompletedEntriesAPI(date) {
     return result.json();
 }
 /*
+ * MISC
+ */
+function getDateFromPath(defaultDate = new Date()) {
+    const match = window.location.pathname.match(/(\d{4}-\d{2}-\d{2})/);
+    if (!match)
+        return defaultDate;
+    const [year, month, day] = match[1].split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return isNaN(date.getTime()) ? defaultDate : date;
+}
+/*
  * PWA
  */
 if ('serviceWorker' in navigator && window.top === window.self) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/serviceWorker.js', { type: "module" })
+        navigator.serviceWorker.register('/sw.js', { type: "module" })
             .then(reg => console.log('Service worker registered:', reg))
             .catch(err => console.error('Service worker registration failed:', err));
     });
@@ -239,6 +328,9 @@ function main() {
         throw Error("missing initial model");
     }
     let model = JSON.parse(el.textContent);
+    model.calendarDate = getDateFromPath();
+    console.log('main', model.calendarDate);
+    window.indexedDB.open('todou');
     vdom = newVdom({
         model: model,
         render: renderTodou,

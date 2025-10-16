@@ -675,32 +675,35 @@ instance ToJSON a => ToJSON (Err a) where
 
 -- | Frontend initial model
 data Model = Model
-  { entries    :: [Entry]
-  , visibility :: Text
-  , field      :: Text
-  , nextId     :: EntryId
-  , date       :: Text
+  { entries       :: [Entry]
+  , visibility    :: Text
+  , field         :: Text
+  , nextId        :: EntryId
+  , date          :: Text
+  , showCalendar  :: Bool
   }
 
 
 instance ToJSON Model where
   toJSON model = Aeson.object
-    [ "entries"    .= model.entries
-    , "visibility" .= model.visibility
-    , "field"      .= model.field
-    , "nextId"     .= model.nextId
-    , "date"       .= model.date
+    [ "entries"      .= model.entries
+    , "visibility"   .= model.visibility
+    , "field"        .= model.field
+    , "nextId"       .= model.nextId
+    , "date"         .= model.date
+    , "showCalendar" .= model.showCalendar
     ]
 
 
 todoToModel :: Todo -> Model
 todoToModel todo =
   Model
-    { entries    = todo.entries
-    , visibility = "All"
-    , field      = ""
-    , nextId     = EntryId (lastId + 1)
-    , date       = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
+    { entries      = todo.entries
+    , visibility   = "All"
+    , field        = ""
+    , nextId       = EntryId (lastId + 1)
+    , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
+    , showCalendar = False
     }
   where
     EntryId lastId
@@ -708,12 +711,13 @@ todoToModel todo =
       | otherwise        = maximum (fmap (.entryId) todo.entries)
 
 
-json', javascript, css, png, ico :: ByteString -> ActionM ()
+json', javascript, css, png, ico, woff2 :: ByteString -> ActionM ()
 json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
 javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
 css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
 png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
 ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
+woff2 bytes      = setHeader "Content-Type" "application/font-woff2" >> (raw . ByteString.fromStrict $ bytes)
 
 
 index :: Model -> Html ()
@@ -721,15 +725,17 @@ index model = do
   html_ [ lang_ "en" ] do
     head_ do
       meta_ [ charset_ "UTF-8" ]
-      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover" ]
+      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" ]
       meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
       meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
       meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
       meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
       meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
       link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
-      link_ [ rel_ "stylesheet", href_ "main.css" ]
+      link_ [ rel_ "stylesheet", href_ "/main.css" ]
       link_ [ rel_ "manifest", href_ "/manifest.json" ]
+      link_ [ rel_ "stylesheet", href_ "/boxicons2.1.4.css" ]
+      link_ [ rel_ "stylesheet", href_ "/reset.css" ]
       title_ "Toudo"
     body_ do
       div_ [ id_ "app" ] mempty
@@ -794,14 +800,18 @@ server Options { port } handle = scotty port do
         html . Lucid.renderText $ index (todoToModel newTodo)
 
 
-  get "/main.css"                     do css        $(FileEmbed.embedFile "data/todou/main.css")
   get "/main.js"                      do javascript $(FileEmbed.embedFile "data/todou/main.js")
+  get "/sw.js"                        do javascript $(FileEmbed.embedFile "data/todou/sw.js")
   get "/vdom.js"                      do javascript $(FileEmbed.embedFile "data/todou/vdom.js")
   get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-192x192.png")
   get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-512x512.png")
   get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFile "data/todou/apple-touch-icon.png")
   get "/favicon.ico"                  do ico        $(FileEmbed.embedFile "data/todou/favicon.ico")
   get "/manifest.json"                do json'      $(FileEmbed.embedFile "data/todou/manifest.json")
+  get "/main.css"                     do css        $(FileEmbed.embedFile "data/todou/main.css")
+  get "/boxicons2.1.4.css"            do css        $(FileEmbed.embedFile "data/todou/boxicons2.1.4.css")
+  get "/reset"                        do css        $(FileEmbed.embedFile "data/todou/reset.css")
+  get "/boxicons.woff2"               do woff2      $(FileEmbed.embedFile "data/todou/boxicons.woff2")
 
 
   -- add a new entry
