@@ -40,9 +40,7 @@ function renderTodou(model: Model): VNode {
   return (
     <div class="todou-container">
       <nav onclick={(_: MouseEvent) => { toggleCalendar(model); }} >
-        <span>
-          {formatted}
-        </span>
+        <span> {formatted} </span>
       </nav>
       <section class="todoapp">
         {renderInput(model)}
@@ -193,32 +191,27 @@ function renderEntry(model: Model, entry: Entry): VNode {
           class="toggle"
           type="checkbox"
           checked={entry.completed}
-          onclick={() => checkEntry(model, entry.id, !entry.completed)}
-        />
-        <label
-          ondblclick={() => editingEntry(model, entry.id, true)}
-        >
-          {entry.description}
-        </label>
+          onclick={() => checkEntry(model, entry.id, !entry.completed)} />
+        <label ondblclick={() => editingEntry(model, entry.id, true)}> {entry.description} </label>
         <button
           class="destroy"
-          onclick={() => deleteEntry(model, entry.id)}
-        />
+          onclick={() => deleteEntry(model, entry.id)} />
       </div>
 
-      <input
-        class="edit"
-        name="title"
-        value={entry.description}
-        id={`todo-${entry.id}`}
-        onkeydown={(ev: KeyboardEvent) => {
-          if (ev.key === "Enter") editingEntry(model, entry.id, false);
-        }}
-        oninput={(ev: Event) => {
-          updateEntry(model, entry.id, (ev.target as HTMLInputElement).value);
-        }}
-        onblur={() => editingEntry(model, entry.id, false)}
-      />
+      <div class="edit">
+        <input
+          name="title"
+          value={entry.description}
+          id={`todo-${entry.id}`}
+          onkeydown={(ev: KeyboardEvent) => {
+            if (ev.key === "Enter") editingEntry(model, entry.id, false);
+          }}
+          oninput={(ev: Event) => {
+            updateEntry(model, entry.id, (ev.target as HTMLInputElement).value);
+          }}
+          onblur={() => editingEntry(model, entry.id, false)}
+        />
+      </div>
     </li>
   );
 }

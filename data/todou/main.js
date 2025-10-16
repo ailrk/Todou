@@ -7,7 +7,10 @@ function renderTodou(model) {
     const formatted = date.toISOString().split('T')[0];
     return (h("div", { class: "todou-container" },
         h("nav", { onclick: (_) => { toggleCalendar(model); } },
-            h("span", null, formatted)),
+            h("span", null,
+                " ",
+                formatted,
+                " ")),
         h("section", { class: "todoapp" },
             renderInput(model),
             renderEntries(model),
@@ -83,14 +86,18 @@ function renderEntry(model, entry) {
     return (h("li", { key: `todo-${entry.id}`, class: classes },
         h("div", { class: "view" },
             h("input", { class: "toggle", type: "checkbox", checked: entry.completed, onclick: () => checkEntry(model, entry.id, !entry.completed) }),
-            h("label", { ondblclick: () => editingEntry(model, entry.id, true) }, entry.description),
+            h("label", { ondblclick: () => editingEntry(model, entry.id, true) },
+                " ",
+                entry.description,
+                " "),
             h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })),
-        h("input", { class: "edit", name: "title", value: entry.description, id: `todo-${entry.id}`, onkeydown: (ev) => {
-                if (ev.key === "Enter")
-                    editingEntry(model, entry.id, false);
-            }, oninput: (ev) => {
-                updateEntry(model, entry.id, ev.target.value);
-            }, onblur: () => editingEntry(model, entry.id, false) })));
+        h("div", { class: "edit" },
+            h("input", { name: "title", value: entry.description, id: `todo-${entry.id}`, onkeydown: (ev) => {
+                    if (ev.key === "Enter")
+                        editingEntry(model, entry.id, false);
+                }, oninput: (ev) => {
+                    updateEntry(model, entry.id, ev.target.value);
+                }, onblur: () => editingEntry(model, entry.id, false) }))));
 }
 function renderCalendar(model) {
     const date = model.calendarDate;
