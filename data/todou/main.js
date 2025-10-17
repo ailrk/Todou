@@ -19,7 +19,7 @@ function renderTodou(model) {
         renderCalendar(model)));
 }
 function renderInput(model) {
-    return (h("header", { class: "header" },
+    return (h("header", null,
         h("input", { class: "new-todo", placeholder: "What needs to be done?", autofocus: true, value: model.field, name: "newTodo", onkeydown: (ev) => {
                 if (ev.key === "Enter") {
                     addEntry(model);

@@ -56,7 +56,7 @@ function renderTodou(model: Model): VNode {
 
 function renderInput(model: Model): VNode {
   return (
-    <header class="header">
+    <header>
       <input
         class="new-todo"
         placeholder="What needs to be done?"
@@ -278,7 +278,6 @@ function renderCalendar(model: Model) {
     </div>
   );
 }
-
 
 
 /*

@@ -734,8 +734,6 @@ index model = do
       link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
       link_ [ rel_ "stylesheet", href_ "/main.css" ]
       link_ [ rel_ "manifest", href_ "/manifest.json" ]
-      link_ [ rel_ "stylesheet", href_ "/boxicons2.1.4.css" ]
-      link_ [ rel_ "stylesheet", href_ "/reset.css" ]
       title_ "Toudo"
     body_ do
       div_ [ id_ "app" ] mempty
@@ -813,6 +811,7 @@ server Options { port } handle = scotty port do
   get "/right-arrow.svg"              do svg        $(FileEmbed.embedFile "data/todou/right-arrow.svg")
   get "/x.svg"                        do svg        $(FileEmbed.embedFile "data/todou/x.svg")
   get "/calendar.svg"                 do svg        $(FileEmbed.embedFile "data/todou/calendar.svg")
+  get "/favicon.svg"                  do svg        $(FileEmbed.embedFile "data/todou/favicon.svg")
 
 
   -- add a new entry
