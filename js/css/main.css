@@ -62,11 +62,8 @@ button, a {
 
 
 nav {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   gap: 1em;
-  margin: 40px 0 30px 0;
+  margin: 40px 0 30px 20px;
   cursor: pointer;
   -webkit-font-smoothing: antialiased;
 }
@@ -79,6 +76,14 @@ nav span {
   margin: 0; /* remove default margin for flex alignment */
   padding-top: 1px;
   -webkit-font-smoothing: antialiased;
+}
+
+
+nav span::before {
+  display: inline-block;
+  line-height: 1;
+  transform: translate(0, 4px);
+	content: url('calendar.svg');
 }
 
 
@@ -280,13 +285,13 @@ nav span {
 }
 
 .todo-list li label {
-  width: 80%;
 	word-break: break-all;
-	padding: 15px 15px 15px 60px;
+	padding: 15px 50px 15px 60px;
 	display: block;
 	line-height: 1.2;
 	transition: color 0.4s;
 }
+
 
 .todo-list li.completed label {
 	color: #d9d9d9;
@@ -300,19 +305,24 @@ nav span {
 	right: 10px;
 	width: 40px;
 	height: 40px;
-	margin: auto 0;
 	font-size: 30px;
 	color: #cc9a9a;
-	margin-bottom: 11px;
 	transition: color 0.2s ease-out;
+  cursor: pointer;
 }
 
 .todo-list li .destroy:hover {
+	display: flex;
+  align-items: center;
+  justify-content: center;
 	color: #af5b5e;
 }
 
 .todo-list li .destroy:after {
-	content: '×';
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+	content: url('x.svg');
 }
 
 .todo-list li:hover .destroy {
@@ -536,6 +546,23 @@ html .clear-completed:active {
   padding-top: 5px;
   -webkit-font-smoothing: antialiased;
 }
+
+
+.calendar-header button:nth-of-type(1)::after {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+	content: url('left-arrow.svg');
+}
+
+
+.calendar-header button:nth-of-type(2)::after {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+	content: url('right-arrow.svg');
+}
+
 
 
 @supports (-webkit-touch-callout: none) {

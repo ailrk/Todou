@@ -711,13 +711,13 @@ todoToModel todo =
       | otherwise        = maximum (fmap (.entryId) todo.entries)
 
 
-json', javascript, css, png, ico, woff2 :: ByteString -> ActionM ()
+json', javascript, css, png, ico, svg :: ByteString -> ActionM ()
 json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
 javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
 css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
 png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
 ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
-woff2 bytes      = setHeader "Content-Type" "application/font-woff2" >> (raw . ByteString.fromStrict $ bytes)
+svg bytes        = setHeader "Content-Type" "image/svg+xml" >> (raw . ByteString.fromStrict $ bytes)
 
 
 index :: Model -> Html ()
@@ -809,9 +809,10 @@ server Options { port } handle = scotty port do
   get "/favicon.ico"                  do ico        $(FileEmbed.embedFile "data/todou/favicon.ico")
   get "/manifest.json"                do json'      $(FileEmbed.embedFile "data/todou/manifest.json")
   get "/main.css"                     do css        $(FileEmbed.embedFile "data/todou/main.css")
-  get "/boxicons2.1.4.css"            do css        $(FileEmbed.embedFile "data/todou/boxicons2.1.4.css")
-  get "/reset"                        do css        $(FileEmbed.embedFile "data/todou/reset.css")
-  get "/boxicons.woff2"               do woff2      $(FileEmbed.embedFile "data/todou/boxicons.woff2")
+  get "/left-arrow.svg"               do svg        $(FileEmbed.embedFile "data/todou/left-arrow.svg")
+  get "/right-arrow.svg"              do svg        $(FileEmbed.embedFile "data/todou/right-arrow.svg")
+  get "/x.svg"                        do svg        $(FileEmbed.embedFile "data/todou/x.svg")
+  get "/calendar.svg"                 do svg        $(FileEmbed.embedFile "data/todou/calendar.svg")
 
 
   -- add a new entry

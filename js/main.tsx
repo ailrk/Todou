@@ -193,6 +193,7 @@ function renderEntry(model: Model, entry: Entry): VNode {
           checked={entry.completed}
           onclick={() => checkEntry(model, entry.id, !entry.completed)} />
         <label ondblclick={() => editingEntry(model, entry.id, true)}> {entry.description} </label>
+
         <button
           class="destroy"
           onclick={() => deleteEntry(model, entry.id)} />
@@ -245,13 +246,9 @@ function renderCalendar(model: Model) {
       }} >
       <div class="calendar-content">
         <span class="calendar-header">
-          <button onclick={(_: MouseEvent) => { prevCalendar(model)} }>
-            <i class='bx bxs-left-arrow'></i>
-          </button>
+          <button onclick={(_: MouseEvent) => { prevCalendar(model)} }/>
           <h1>{formatted}</h1>
-          <button onclick={(_: MouseEvent) => { nextCalendar(model)} }>
-            <i class='bx bxs-right-arrow' ></i>
-          </button>
+          <button onclick={(_: MouseEvent) => { nextCalendar(model)} }/>
         </span>
 
         <ol class="calendar">
