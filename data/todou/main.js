@@ -86,14 +86,11 @@ function renderEntry(model, entry) {
     return (h("li", { key: `todo-${entry.id}`, class: classes },
         h("div", { class: "view" },
             h("input", { class: "toggle", type: "checkbox", checked: entry.completed, onclick: () => checkEntry(model, entry.id, !entry.completed) }),
-            h("label", { ondblclick: () => editingEntry(model, entry.id, true) },
-                " ",
-                entry.description,
-                " "),
+            h("label", { ondblclick: () => editingEntry(model, entry.id, true) }, entry.description),
             h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })),
         h("div", { class: "edit" },
-            h("input", { name: "title", value: entry.description, id: `todo-${entry.id}`, onkeydown: (ev) => {
-                    if (ev.key === "Enter")
+            h("textarea", { name: "title", value: entry.description, id: `todo-${entry.id}`, onkeydown: (ev) => {
+                    if (ev.key === "Enter" && !ev.shiftKey)
                         editingEntry(model, entry.id, false);
                 }, oninput: (ev) => {
                     updateEntry(model, entry.id, ev.target.value);
@@ -333,9 +330,20 @@ function main() {
         throw Error("missing initial model");
     }
     let model = JSON.parse(el.textContent);
+    el.remove();
     model.calendarDate = getDateFromPath();
     console.log('main', model.calendarDate);
     window.indexedDB.open('todou');
+    // TODO
+    // - get model for the day
+    // - check if same day todo from local db
+    // -
+    //
+    // - reconcile
+    //  - if different
+    //    - merge entries. order by id
+    //    - if there's duplicate id
+    //      - remove the local one.
     vdom = newVdom({
         model: model,
         render: renderTodou,

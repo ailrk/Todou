@@ -668,7 +668,7 @@ newtype Err a = Err a
 instance ToJSON a => ToJSON (Err a) where
   toJSON (Err e) =
     Aeson.object
-      [ "ok"   .= False
+      [ "ok"  .= False
       , "err" .= e
       ]
 

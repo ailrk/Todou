@@ -192,7 +192,7 @@ function renderEntry(model: Model, entry: Entry): VNode {
           type="checkbox"
           checked={entry.completed}
           onclick={() => checkEntry(model, entry.id, !entry.completed)} />
-        <label ondblclick={() => editingEntry(model, entry.id, true)}> {entry.description} </label>
+        <label ondblclick={() => editingEntry(model, entry.id, true)}>{entry.description}</label>
 
         <button
           class="destroy"
@@ -200,12 +200,12 @@ function renderEntry(model: Model, entry: Entry): VNode {
       </div>
 
       <div class="edit">
-        <input
+        <textarea
           name="title"
           value={entry.description}
           id={`todo-${entry.id}`}
           onkeydown={(ev: KeyboardEvent) => {
-            if (ev.key === "Enter") editingEntry(model, entry.id, false);
+            if (ev.key === "Enter" && !ev.shiftKey) editingEntry(model, entry.id, false);
           }}
           oninput={(ev: Event) => {
             updateEntry(model, entry.id, (ev.target as HTMLInputElement).value);
@@ -521,10 +521,24 @@ function main() {
   }
 
   let model: Model = JSON.parse(el.textContent!)
+  el.remove();
+
   model.calendarDate = getDateFromPath();
   console.log('main', model.calendarDate)
 
   window.indexedDB.open('todou')
+
+  // TODO
+  // - get model for the day
+  // - check if same day todo from local db
+  // -
+  //
+  // - reconcile
+  //  - if different
+  //    - merge entries. order by id
+  //    - if there's duplicate id
+  //      - remove the local one.
+
 
   vdom = newVdom({
     model: model,
