@@ -11,6 +11,7 @@ result
 profile*
 .profile
 js/node_modules/
+tags/
 *.eventlog
 *.eventlog.html
 *.hp

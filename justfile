@@ -44,3 +44,17 @@ clean:
 watch:
   ghcid -c "cabal repl todou" -s ":set args --storage=sqlite::memory: --port=5555"  -T "Todou.main" -W
 
+
+tags:
+  mkdir -p tags
+  cd tags && \
+    rm ./* -rf && \
+    concurrently \
+      "cabal unpack base" \
+      "cabal unpack scotty" \
+      "cabal unpack ghc-internal" \
+      "cabal unpack aeson" \
+      "cabal unpack containers" \
+      "cabal unpack text" \
+      "cabal unpack bytestring" && \
+    fast-tags -R . -o tags
