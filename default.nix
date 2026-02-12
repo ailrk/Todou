@@ -1,8 +1,8 @@
 { mkDerivation, aeson, amazonka, amazonka-s3, base, bytestring
-, conduit, containers, cryptohash-sha256, cryptonite, directory
-, file-embed, filepath, http-types, jwt, lib, lucid, network-uri
-, scotty, sqlite-simple, string-interpolate, text, time, wai
-, wai-extra, warp
+, conduit, containers, cookie, cryptohash-sha256, cryptonite
+, directory, file-embed, filepath, http-types, jwt, lib, lucid
+, network-uri, scotty, sqlite-simple, string-interpolate, text
+, time, wai, wai-extra, warp
 }:
 mkDerivation {
   pname = "todou";
@@ -12,7 +12,7 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     aeson amazonka amazonka-s3 base bytestring conduit containers
-    cryptohash-sha256 cryptonite directory file-embed filepath
+    cookie cryptohash-sha256 cryptonite directory file-embed filepath
     http-types jwt lucid network-uri scotty sqlite-simple
     string-interpolate text time wai wai-extra warp
   ];
