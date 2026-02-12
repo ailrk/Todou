@@ -56,5 +56,8 @@ tags:
       "cabal unpack aeson" \
       "cabal unpack containers" \
       "cabal unpack text" \
-      "cabal unpack bytestring" && \
+      "cabal unpack bytestring" \
+      "cabal unpack time" \
+      "cabal unpack amazonka" \
+      "cabal unpack amazonka-s3" && \
     fast-tags -R . -o tags
