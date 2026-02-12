@@ -32,10 +32,10 @@ import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
 import Data.Function ((&))
 import Data.Functor ((<&>))
-import Data.List (stripPrefix)
+import Data.List (stripPrefix, foldl')
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (iii, i)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -50,7 +50,7 @@ import Data.Time
       getCurrentTime,
       utcToLocalTime,
       utc,
-      LocalTime(..) )
+      LocalTime(..), addDays )
 import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
@@ -67,6 +67,8 @@ import System.FilePath (takeExtension, (</>), takeBaseName)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
 import Web.Cookie (parseCookies)
+import Data.Bits (Bits(..))
+import Data.Word (Word32)
 
 
 ----------------------------------------
@@ -382,6 +384,9 @@ createS3Env = do
 -- Options
 ----------------------------------------
 
+type Bucket = Text
+type ConnectionString = String
+
 
 data StorageOption
   = StorageFileSystem FilePath
@@ -465,10 +470,6 @@ instance Parsable EntryId where
 ----------------------------------------
 
 
-type Bucket = Text
-type ConnectionString = String
-
-
 data Handle
   = FileSystemHandle FilePath (MVar Buffer)
   | Sqlite3Handle Sqlite.Connection (MVar Buffer)
@@ -510,7 +511,6 @@ createHandle options = do
 
     StorageS3 bucket -> do
       env <- createS3Env
-
       let request = Amazonka.newListObjectsV2 (Amazonka.BucketName bucket)
       resp <- Amazonka.runResourceT $ Amazonka.send env request
       let dates = fmap (\o -> coerce @_ @Text o.key) (fromMaybe []  resp.contents)
@@ -524,7 +524,6 @@ createHandle options = do
                   dates
       ref <- newMVar Buffer { todos = todos, dirtyCounts = 0 }
       pure $ S3Handle env bucket ref
-
 
     StorageNull ->
       error "impossible"
@@ -580,10 +579,28 @@ loadTodo handle date = do
                        }
               Nothing -> pure buffer
 
-
   buffer <- readMVar bufferMVar
   pure do
     join (Map.lookup date buffer.todos)
+
+
+-- | Get the presence map from the previous 30 days
+getPresences :: Handle -> Day -> [Integer] -> IO Word32
+getPresences handle date offsets = do
+  results <- traverse (loadTodo handle) days30
+  pure
+    $ foldl' setIfTrue zeroBits
+    $ zip [0..]
+    $ fmap (isJust . cleanup) results
+  where
+    days30 = fmap (`addDays` date) offsets
+    cleanup = \case
+      Just (Todo { entries = []} ) -> Nothing
+      Nothing -> Nothing
+      other -> other
+
+    setIfTrue acc (idx, True) = setBit acc idx
+    setIfTrue acc (_, False) = acc
 
 
 -- | Flush in memory todo to storage
@@ -681,6 +698,8 @@ data Model = Model
   , nextId        :: EntryId
   , date          :: Text
   , showCalendar  :: Bool
+  , presenceMapL  :: Word32
+  , presenceMapR  :: Word32
   }
 
 
@@ -692,6 +711,8 @@ instance ToJSON Model where
     , "nextId"       .= model.nextId
     , "date"         .= model.date
     , "showCalendar" .= model.showCalendar
+    , "presenceMapL" .= model.presenceMapL
+    , "presenceMapR" .= model.presenceMapR
     ]
 
 
@@ -700,10 +721,12 @@ todoToModel todo =
   Model
     { entries      = todo.entries
     , visibility   = "All"
-    , field        = ""
+    , field        = mempty
     , nextId       = EntryId (lastId + 1)
     , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
     , showCalendar = False
+    , presenceMapL = 0
+    , presenceMapR = 0
     }
   where
     EntryId lastId
@@ -777,6 +800,8 @@ server Options { port } handle = scotty port do
   -- render the todo data for one date.
   get "/:date" do
     date <- captureParam @Day "date"
+    presenceMapL <- liftIO $ getPresences handle date [1..30]
+    presenceMapR <- liftIO $ getPresences handle date (fmap negate [1..30])
     let bufferMvar = getBufferMVar handle
     buffer <- liftIO do
       flush handle -- flush on refresh
@@ -784,18 +809,27 @@ server Options { port } handle = scotty port do
     case Map.lookup date buffer.todos of
       TodoLoaded todo -> do
         liftIO $ putMVar bufferMvar buffer
-        html . Lucid.renderText $ index (todoToModel todo)
+        html . Lucid.renderText $ index ((todoToModel todo)
+          { presenceMapL = presenceMapL
+          , presenceMapR = presenceMapR
+          })
       TodoNotLoaded -> do
         liftIO $ putMVar bufferMvar buffer
         liftIO (loadTodo handle date) >>= \case
-          Just todo -> html . Lucid.renderText $ index (todoToModel todo)
+          Just todo -> html . Lucid.renderText $ index ((todoToModel todo)
+            { presenceMapL = presenceMapL
+            , presenceMapR = presenceMapR
+            })
           Nothing -> do
             status status500
             text "Can't find the todo data"
       TodoNotExists -> do -- not in storage, create an empty one
         let newTodo = Todo { entries = [], date = date, dirty = True }
         liftIO $ putMVar bufferMvar buffer
-        html . Lucid.renderText $ index (todoToModel newTodo)
+        html . Lucid.renderText $ index ((todoToModel newTodo)
+          { presenceMapL = presenceMapL
+          , presenceMapR = presenceMapR
+          })
 
 
   get "/main.js"                      do javascript $(FileEmbed.embedFile "data/todou/main.js")

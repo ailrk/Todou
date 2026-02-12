@@ -516,19 +516,41 @@ html .clear-completed:active {
 }
 
 
-.today {
+.today, .current {
   color: white;
 }
 
 
-.today::before {
+.today::before, .current::before {
   content: "";
   position: absolute;
-  width: 20px;
+  width: 22px;
   display: block;
   aspect-ratio: 1 / 1;
   transform: translate(-10%, -10%);
+  z-index: -1;
+}
+
+
+.today::before {
   background: #af2f2f6e;
+}
+
+
+.current::before {
+  background: #2faf746e;
+}
+
+
+.presence::after {
+  content: "";
+  position: absolute;
+  width: 5px;
+  display: block;
+  aspect-ratio: 1 / 1;
+  transform: translate(300%, -100%);
+  clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
+  background: #ff452d8a;
   z-index: -1;
 }
 

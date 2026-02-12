@@ -22,6 +22,8 @@ export interface Model {
   nextId: EntryId;
   date: string;
   showCalendar: boolean;
+  presenceMapL: number;
+  presenceMapR: number;
 
   // local
   calendarDate: Date;
@@ -219,21 +221,32 @@ function renderEntry(model: Model, entry: Entry): VNode {
 
 
 function renderCalendar(model: Model) {
-  const date           = model.calendarDate;
-  const year           = date.getFullYear();
-  const month          = date.getMonth();
+  const year           = model.calendarDate.getFullYear();
+  const month          = model.calendarDate.getMonth();
   const firstDay       = new Date(year, month, 1);
   const lastDay        = new Date(year, month + 1, 0);
   const daysInMonth    = lastDay.getDate();
   const firstDayOfWeek = firstDay.getDay();
-  const formatted      = date.toISOString().split('T')[0];
+  const formatted      = model.calendarDate.toISOString().split('T')[0];
 
   function today(i: number) {
     let now = new Date();
-    if (year != now.getFullYear()) return "";
-    if (month != now.getMonth()) return "";
-    if (i != now.getDate()) return "";
-    return "today"
+    if (year === now.getFullYear() &&
+      month === now.getMonth() &&
+      i === now.getDate())
+      return "today"
+    else
+      return ""
+  }
+
+  function current(i: number) {
+    if (formatted === model.date && i === model.calendarDate.getDate())
+      return "current"
+    else
+      return ""
+  }
+
+  function presence(i: number) {
   }
 
   return (
@@ -262,7 +275,7 @@ function renderCalendar(model: Model) {
             .map(i => {
               return (
                 <li
-                  class={today(i)}
+                  class={today(i) + " " + current(i) + " " + presence(i)}
                   style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
                   onclick={(_: MouseEvent) => {
                     window.location.href = `/${year}-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;

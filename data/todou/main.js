@@ -100,23 +100,29 @@ function renderEntry(model, entry) {
                 }, onblur: () => editingEntry(model, entry.id, false) }))));
 }
 function renderCalendar(model) {
-    const date = model.calendarDate;
-    const year = date.getFullYear();
-    const month = date.getMonth();
+    const year = model.calendarDate.getFullYear();
+    const month = model.calendarDate.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const firstDayOfWeek = firstDay.getDay();
-    const formatted = date.toISOString().split('T')[0];
+    const formatted = model.calendarDate.toISOString().split('T')[0];
     function today(i) {
         let now = new Date();
-        if (year != now.getFullYear())
+        if (year === now.getFullYear() &&
+            month === now.getMonth() &&
+            i === now.getDate())
+            return "today";
+        else
             return "";
-        if (month != now.getMonth())
+    }
+    function current(i) {
+        if (formatted === model.date && i === model.calendarDate.getDate())
+            return "current";
+        else
             return "";
-        if (i != now.getDate())
-            return "";
-        return "today";
+    }
+    function presence(i) {
     }
     return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, onclick: (ev) => {
             if (document.querySelector('.calendar-content').contains(ev.target))
@@ -143,7 +149,7 @@ function renderCalendar(model) {
                 Array
                     .from({ length: daysInMonth }, (_, i) => i + 1)
                     .map(i => {
-                    return (h("li", { class: today(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
+                    return (h("li", { class: today(i) + " " + current(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
                             window.location.href = `/${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
                         } }, i));
                 })))));
