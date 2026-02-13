@@ -16,8 +16,8 @@ import Amazonka.S3.ListObjectsV2 qualified as Amazonka
 import Amazonka.S3.Types.Object (Object(..))
 import Conduit qualified
 import Control.Applicative (Alternative((<|>)), asum)
-import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar)
-import Control.Concurrent.MVar (MVar, newMVar, takeMVar, putMVar, modifyMVar_)
+import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar, modifyMVar_, modifyMVar)
+import Control.Concurrent.MVar (MVar, newMVar, takeMVar, putMVar)
 import Control.Exception (try, SomeException, Exception (..))
 import Control.Monad (unless, when, forM_, forever, join, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -30,9 +30,9 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Char (isSpace)
 import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
-import Data.Function ((&))
+import Data.Function ((&), fix)
 import Data.Functor ((<&>))
-import Data.List (stripPrefix, foldl')
+import Data.List (stripPrefix, foldl', sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -68,7 +68,9 @@ import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
 import Web.Cookie (parseCookies)
 import Data.Bits (Bits(..))
-import Data.Word (Word32)
+import Data.ByteString.Base64 qualified as B64
+import Debug.Trace (traceShowM)
+import Data.Word (Word8)
 
 
 ----------------------------------------
@@ -198,6 +200,13 @@ insertTodo date todo buffer =
     }
 
 
+getBufferDayRange :: Buffer -> Maybe (Day, Day)
+getBufferDayRange Buffer { todos } =
+  case sort (Map.keys todos) of
+    [] -> Nothing
+    ks -> pure (head ks, last ks)
+
+
 ----------------------------------------
 -- Parsing
 ----------------------------------------
@@ -239,10 +248,14 @@ parseEntry ls = do
     }
 
 
+parseTodoDate :: String -> Maybe Day
+parseTodoDate = parseTimeM True defaultTimeLocale "%Y-%m-%d"
+
+
 parseMeta :: [Text] -> Maybe Day
 parseMeta ls = do
   kvs <- traverse parseLine ls
-  lookup "date" kvs >>= parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" . Text.unpack
+  lookup "date" kvs >>= parseTodoDate . Text.unpack
 
 
 -- | Split a file into list of entries
@@ -513,7 +526,7 @@ createHandle options = do
       env <- createS3Env
       let request = Amazonka.newListObjectsV2 (Amazonka.BucketName bucket)
       resp <- Amazonka.runResourceT $ Amazonka.send env request
-      let dates = fmap (\o -> coerce @_ @Text o.key) (fromMaybe []  resp.contents)
+      let dates = fmap (\o -> coerce o.key) (fromMaybe []  resp.contents)
       let todos =
             foldr (\date acc -> do
                       case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (Text.unpack date) of
@@ -535,11 +548,22 @@ getBufferMVar ((Sqlite3Handle _ bufferMvar ))    = bufferMvar
 getBufferMVar ((S3Handle _ _ bufferMvar ))       = bufferMvar
 
 
+withBuffer :: Handle -> (Buffer -> IO (Buffer, a)) -> IO a
+withBuffer handle = modifyMVar (getBufferMVar handle)
+
+
+getBuffer :: Handle -> IO Buffer
+getBuffer handle = readMVar $ getBufferMVar handle
+
+
+modifyBuffer :: Handle -> (Buffer -> IO Buffer) -> IO ()
+modifyBuffer handle = modifyMVar_ (getBufferMVar handle)
+
+
 -- | Load Todo if it's not already cached in Buffer.
 loadTodo :: Handle -> Day -> IO (Maybe Todo)
 loadTodo handle date = do
-  let bufferMVar = getBufferMVar handle
-  modifyMVar_ bufferMVar \buffer -> do
+  modifyBuffer handle \buffer -> do
     case Map.lookup date buffer.todos of
       TodoLoaded _ -> pure buffer
       TodoNotExists -> pure buffer
@@ -578,36 +602,26 @@ loadTodo handle date = do
                        , dirtyCounts = buffer.dirtyCounts + 1
                        }
               Nothing -> pure buffer
-
-  buffer <- readMVar bufferMVar
+  buffer <- readMVar (getBufferMVar handle)
   pure do
     join (Map.lookup date buffer.todos)
 
 
--- | Get the presence map from the previous 30 days
-getPresences :: Handle -> Day -> [Integer] -> IO Word32
-getPresences handle date offsets = do
-  results <- traverse (loadTodo handle) days30
-  pure
-    $ foldl' setIfTrue zeroBits
-    $ zip [0..]
-    $ fmap (isJust . cleanup) results
-  where
-    days30 = fmap (`addDays` date) offsets
-    cleanup = \case
-      Just (Todo { entries = []} ) -> Nothing
-      Nothing -> Nothing
-      other -> other
-
-    setIfTrue acc (idx, True) = setBit acc idx
-    setIfTrue acc (_, False) = acc
+-- | Load all todos into model
+loadAllTodos :: Handle -> Day -> Day -> IO ()
+loadAllTodos handle from to = do
+  flip fix from \rec d -> do
+    _ <- loadTodo handle d
+    if d > to
+       then pure ()
+       else do
+         rec (1 `addDays` d)
 
 
 -- | Flush in memory todo to storage
 flush :: Handle -> IO ()
 flush handle = do
-  let bufferMVar = getBufferMVar handle
-  modifyMVar_ bufferMVar \buffer -> do
+  modifyBuffer handle \buffer -> do
     unless (buffer.dirtyCounts == 0) do
       forM_ buffer.todos \case
         Nothing -> pure ()
@@ -648,6 +662,26 @@ flush handle = do
       { dirtyCounts = 0
       , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos
       }
+
+
+-- | Get the presence map of all todos
+getPresences :: Buffer -> IO (Maybe (Integer, Day))
+getPresences buffer@Buffer{ todos} = do
+  case getBufferDayRange buffer of
+    Just (from, to) -> do
+      let m = foldl' setIfTrue zeroBits
+            $ zip [0..]
+            $ fmap (isJust . cleanup . join . (`Map.lookup` todos)) [from..to]
+      pure (Just (m, from))
+    Nothing -> pure Nothing
+  where
+    cleanup = \case
+      Just (Todo { entries = []} ) -> Nothing
+      Nothing -> Nothing
+      other -> other
+
+    setIfTrue acc (idx, True) = setBit acc idx
+    setIfTrue acc (_, False) = acc
 
 
 ----------------------------------------
@@ -698,8 +732,8 @@ data Model = Model
   , nextId        :: EntryId
   , date          :: Text
   , showCalendar  :: Bool
-  , presenceMapL  :: Word32
-  , presenceMapR  :: Word32
+  , presenceMap   :: Integer
+  , firstDay      :: Text
   }
 
 
@@ -711,9 +745,20 @@ instance ToJSON Model where
     , "nextId"       .= model.nextId
     , "date"         .= model.date
     , "showCalendar" .= model.showCalendar
-    , "presenceMapL" .= model.presenceMapL
-    , "presenceMapR" .= model.presenceMapR
+    , "presenceMap"  .= b64EncodePresenceMap model.presenceMap
+    , "firstDay"     .= model.firstDay
     ]
+
+
+b64EncodePresenceMap :: Integer -> Text
+b64EncodePresenceMap n = Text.decodeUtf8 (B64.encode (ByteString.pack (integerToBytes n)))
+
+
+integerToBytes :: Integer -> [Word8]
+integerToBytes 0 = [0]
+integerToBytes n = fmap (fromIntegral . (.&. 0xff)) bytes
+  where
+    bytes = reverse $ takeWhile (> 0) (iterate (`shiftR` 8) n)
 
 
 todoToModel :: Todo -> Model
@@ -725,8 +770,8 @@ todoToModel todo =
     , nextId       = EntryId (lastId + 1)
     , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
     , showCalendar = False
-    , presenceMapL = 0
-    , presenceMapR = 0
+    , presenceMap  = 0
+    , firstDay     = ""
     }
   where
     EntryId lastId
@@ -769,7 +814,6 @@ server :: Options -> Handle -> IO ()
 server Options { port } handle = scotty port do
   middleware logStdout
 
-
   get "/" do
     mCookies <- header "Cookie"
     let getTimezone = lookup "timezone" . parseCookies . Text.encodeUtf8 . LText.toStrict
@@ -800,36 +844,41 @@ server Options { port } handle = scotty port do
   -- render the todo data for one date.
   get "/:date" do
     date <- captureParam @Day "date"
-    presenceMapL <- liftIO $ getPresences handle date [1..30]
-    presenceMapR <- liftIO $ getPresences handle date (fmap negate [1..30])
+
     let bufferMvar = getBufferMVar handle
+
     buffer <- liftIO do
       flush handle -- flush on refresh
       takeMVar bufferMvar
-    case Map.lookup date buffer.todos of
+
+    (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
+      Just (p, d) -> pure (p, Text.pack (formatTime defaultTimeLocale "%Y-%m-%d" d))
+      Nothing -> pure (0, mempty)
+
+    eModel <- case Map.lookup date buffer.todos of
       TodoLoaded todo -> do
         liftIO $ putMVar bufferMvar buffer
-        html . Lucid.renderText $ index ((todoToModel todo)
-          { presenceMapL = presenceMapL
-          , presenceMapR = presenceMapR
-          })
+        pure (Right (todoToModel todo))
       TodoNotLoaded -> do
         liftIO $ putMVar bufferMvar buffer
         liftIO (loadTodo handle date) >>= \case
-          Just todo -> html . Lucid.renderText $ index ((todoToModel todo)
-            { presenceMapL = presenceMapL
-            , presenceMapR = presenceMapR
-            })
-          Nothing -> do
-            status status500
-            text "Can't find the todo data"
+          Just todo -> pure (Right (todoToModel todo))
+          Nothing -> pure (Left "Can't find the todo data")
       TodoNotExists -> do -- not in storage, create an empty one
         let newTodo = Todo { entries = [], date = date, dirty = True }
         liftIO $ putMVar bufferMvar buffer
-        html . Lucid.renderText $ index ((todoToModel newTodo)
-          { presenceMapL = presenceMapL
-          , presenceMapR = presenceMapR
-          })
+        pure (Right (todoToModel newTodo))
+
+    case eModel of
+      Right model -> do
+        html . Lucid.renderText
+        $ index model
+          { presenceMap = presenceMap
+          , firstDay    = firstDay
+          }
+      Left err -> do
+        status status500
+        text err
 
 
   get "/main.js"                      do javascript $(FileEmbed.embedFile "data/todou/main.js")
@@ -865,13 +914,13 @@ server Options { port } handle = scotty port do
               { entries = todo.entries <> [newEntry]
               , dirty   = True
               }
-        modifyMVar_ (getBufferMVar handle) (pure . updateTodo date (const newTodo))
+        modifyBuffer handle (pure . updateTodo date (const newTodo))
       Nothing -> do -- create new todo if necessary
         let newTodo = Todo
               { entries = [newEntry]
               , date    = date, dirty = True
               }
-        modifyMVar_ (getBufferMVar handle) (pure . insertTodo date newTodo)
+        modifyBuffer handle (pure . insertTodo date newTodo)
     json (Ok ())
 
 
@@ -889,7 +938,7 @@ server Options { port } handle = scotty port do
       Just entryId -> do
         hasChecked <- liftIO $ loadTodo handle date >>= \case
           Just _ -> do
-            modifyMVar_ (getBufferMVar handle)
+            modifyBuffer handle
               $ pure
               . updateTodo date (updateEntry entryId toNewEntry)
             pure True
@@ -900,7 +949,7 @@ server Options { port } handle = scotty port do
       Nothing -> do
         hasChecked <- liftIO $ loadTodo handle date >>= \case
           Just _ -> do
-            modifyMVar_ (getBufferMVar handle)
+            modifyBuffer handle
               (pure . updateTodo date (\todo -> todo { entries = fmap toNewEntry todo.entries }))
             pure True
           Nothing -> pure False
@@ -915,7 +964,7 @@ server Options { port } handle = scotty port do
     entryId <- captureParam @EntryId "id"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
       Just _ -> do
-        modifyMVar_ (getBufferMVar handle) (pure . updateTodo date (deleteEntry entryId))
+        modifyBuffer handle (pure . updateTodo date (deleteEntry entryId))
         pure True
       Nothing -> pure False
     if hasDeleted
@@ -930,7 +979,7 @@ server Options { port } handle = scotty port do
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
       Just _
         | completed -> do
-            modifyMVar_ (getBufferMVar handle)
+            modifyBuffer handle
               (pure . updateTodo date (\todo -> todo { entries = filter (not . (.completed)) todo.entries } ))
             pure True
         | otherwise -> pure False
@@ -965,4 +1014,8 @@ main = do
   options <- getArgs >>= checkArgs . parseArgs
   handle <- createHandle options.storage
   _ <- spawnFlusher handle
+  buffer <- getBuffer handle
+  case getBufferDayRange buffer of
+    Nothing -> pure ()
+    Just (from, to) -> loadAllTodos handle from to
   server options handle

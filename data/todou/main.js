@@ -120,6 +120,22 @@ function renderCalendar(model) {
             return "";
     }
     function presence(i) {
+        if (model.firstDay === "")
+            return "";
+        let cday = new Date(model.calendarDate);
+        let fday = new Date(model.firstDay + "T00:00:00"); // use local time
+        cday.setDate(i);
+        cday.setHours(0, 0, 0, 0);
+        fday.setHours(0, 0, 0, 0);
+        let diff = cday.getTime() - fday.getTime();
+        console.log(i, diff);
+        if (Number.isNaN(diff) || diff < 0)
+            return "";
+        let delta = BigInt(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+        if ((base64ToBigInt(model.presenceMap) & (1n << delta)) !== 0n) {
+            return "presence";
+        }
+        return "";
     }
     return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, onclick: (ev) => {
             if (document.querySelector('.calendar-content').contains(ev.target))
@@ -242,6 +258,7 @@ function toggleCalendar(model, show) {
 function nextCalendar(model) {
     let date = model.calendarDate;
     date.setMonth((date.getMonth() + 1));
+    console.log(date);
     vdom.render();
 }
 function prevCalendar(model) {
@@ -317,6 +334,16 @@ function getDateFromPath(defaultDate = new Date()) {
     const date = new Date(year, month - 1, day);
     return isNaN(date.getTime()) ? defaultDate : date;
 }
+/* Convert base64 string into big int*/
+function base64ToBigInt(b64) {
+    const bin = atob(b64);
+    const bytes = Uint8Array.from(bin, (m) => m.charCodeAt(0));
+    let result = 0n;
+    for (const byte of bytes) {
+        result = (result << 8n) + BigInt(byte);
+    }
+    return result;
+}
 /*
  * PWA
  */
@@ -338,18 +365,8 @@ function main() {
     let model = JSON.parse(el.textContent);
     el.remove();
     model.calendarDate = getDateFromPath();
-    console.log('main', model.calendarDate);
+    console.log('main', model);
     window.indexedDB.open('todou');
-    // TODO
-    // - get model for the day
-    // - check if same day todo from local db
-    // -
-    //
-    // - reconcile
-    //  - if different
-    //    - merge entries. order by id
-    //    - if there's duplicate id
-    //      - remove the local one.
     vdom = newVdom({
         model: model,
         render: renderTodou,
