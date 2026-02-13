@@ -1,15 +1,14 @@
 import { newVdom, h } from "./vdom.js";
+;
 /*
  * Render
  */
 function renderTodou(model) {
-    const date = model.calendarDate;
-    const formatted = date.toISOString().split('T')[0];
     return (h("div", { class: "todou-container" },
         h("nav", { onclick: (_) => { toggleCalendar(model); } },
             h("span", null,
                 " ",
-                formatted,
+                model.date,
                 " ")),
         h("section", { class: "todoapp" },
             renderInput(model),
@@ -97,24 +96,25 @@ function renderEntry(model, entry) {
                 }, onblur: () => editingEntry(model, entry.id, false) }))));
 }
 function renderCalendar(model) {
-    const year = model.calendarDate.getFullYear();
-    const month = model.calendarDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
+    const firstDay = new Date(model.calendar.year, model.calendar.month, 1);
+    const lastDay = new Date(model.calendar.year, model.calendar.month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const firstDayOfWeek = firstDay.getDay();
-    const formatted = model.calendarDate.toISOString().split('T')[0];
+    const formatted = fmtYM(model.calendar);
+    const date = new Date(model.date + "T00:00:00");
     function today(i) {
         let now = new Date();
-        if (year === now.getFullYear() &&
-            month === now.getMonth() &&
+        if (model.calendar.year === now.getFullYear() &&
+            model.calendar.month === now.getMonth() &&
             i === now.getDate())
             return "today";
         else
             return "";
     }
     function current(i) {
-        if (formatted === model.date && i === model.calendarDate.getDate())
+        if (model.calendar.year === date.getFullYear() &&
+            model.calendar.month === date.getMonth() &&
+            date.getDate() === i)
             return "current";
         else
             return "";
@@ -122,17 +122,23 @@ function renderCalendar(model) {
     function presence(i) {
         if (model.firstDay === "")
             return "";
-        let cday = new Date(model.calendarDate);
+        // immediately set current non-mempty todo as presence
+        if (model.calendar.year === date.getFullYear() &&
+            model.calendar.month === date.getMonth() &&
+            i === date.getDate() &&
+            model.entries.length > 0) {
+            return "presence";
+        }
+        let cday = new Date(model.calendar.year, model.calendar.month, 1);
         let fday = new Date(model.firstDay + "T00:00:00"); // use local time
         cday.setDate(i);
         cday.setHours(0, 0, 0, 0);
         fday.setHours(0, 0, 0, 0);
         let diff = cday.getTime() - fday.getTime();
-        console.log(i, diff);
         if (Number.isNaN(diff) || diff < 0)
             return "";
         let delta = BigInt(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-        if ((base64ToBigInt(model.presenceMap) & (1n << delta)) !== 0n) {
+        if ((model.presence & (1n << delta)) !== 0n) {
             return "presence";
         }
         return "";
@@ -163,7 +169,7 @@ function renderCalendar(model) {
                     .from({ length: daysInMonth }, (_, i) => i + 1)
                     .map(i => {
                     return (h("li", { class: today(i) + " " + current(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
-                            window.location.href = `/${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                            window.location.href = `/${model.calendar.year}-${String(model.calendar.month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
                         } }, i));
                 })))));
 }
@@ -249,21 +255,26 @@ function toggleCalendar(model, show) {
     else {
         model.showCalendar = !model.showCalendar;
     }
-    // reset date to the path date.
+    // reset date to the current date.
     if (!model.showCalendar) {
-        model.calendarDate = getDateFromPath();
+        const date = new Date(model.date + "T00:00:00");
+        model.calendar.year = date.getFullYear();
+        model.calendar.month = date.getMonth();
     }
     vdom.render();
 }
 function nextCalendar(model) {
-    let date = model.calendarDate;
-    date.setMonth((date.getMonth() + 1));
+    let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
+    model.calendar.year = date.getFullYear();
+    model.calendar.month = date.getMonth();
     console.log(date);
     vdom.render();
 }
 function prevCalendar(model) {
-    let date = model.calendarDate;
-    date.setMonth((date.getMonth() - 1));
+    let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
+    model.calendar.year = date.getFullYear();
+    model.calendar.month = date.getMonth();
+    console.log(date);
     vdom.render();
 }
 /*
@@ -335,14 +346,23 @@ function getDateFromPath(defaultDate = new Date()) {
     return isNaN(date.getTime()) ? defaultDate : date;
 }
 /* Convert base64 string into big int*/
-function base64ToBigInt(b64) {
-    const bin = atob(b64);
-    const bytes = Uint8Array.from(bin, (m) => m.charCodeAt(0));
+async function base64ToBigInt(b64) {
+    const blob = await fetch(`data:application/octet-stream;base64,${b64}`).then(r => r.blob());
+    const bytes = await zlibDecompress(blob);
     let result = 0n;
     for (const byte of bytes) {
         result = (result << 8n) + BigInt(byte);
     }
     return result;
+}
+async function zlibDecompress(blob) {
+    const ds = new DecompressionStream('deflate');
+    const stream = blob.stream().pipeThrough(ds);
+    const response = await new Response(stream).arrayBuffer();
+    return new Uint8Array(response);
+}
+function fmtYM(ymd) {
+    return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}`;
 }
 /*
  * PWA
@@ -357,14 +377,22 @@ if ('serviceWorker' in navigator && window.top === window.self) {
 /*
  * Main
  */
-function main() {
+async function main() {
     let el = document.getElementById("model");
     if (!el) {
         throw Error("missing initial model");
     }
     let model = JSON.parse(el.textContent);
     el.remove();
-    model.calendarDate = getDateFromPath();
+    const pathDate = getDateFromPath();
+    model.calendar = {
+        year: pathDate.getFullYear(),
+        month: pathDate.getMonth()
+    };
+    model.field = "";
+    model.visibility = "All";
+    model.showCalendar = false;
+    model.presence = await base64ToBigInt(model.presenceMap);
     console.log('main', model);
     window.indexedDB.open('todou');
     vdom = newVdom({
@@ -375,4 +403,4 @@ function main() {
     vdom.render();
 }
 let vdom;
-main();
+await main();

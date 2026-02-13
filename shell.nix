@@ -8,12 +8,14 @@ hspkgs.shellFor {
     hspkgs.cabal2nix
     hspkgs.ghcprofview
     hspkgs.eventlog2html
+    hspkgs.fast-tags
     pkgs.ghcid
     pkgs.bashInteractive
     pkgs.upx
     pkgs.zstd
     pkgs.zlib
     pkgs.pkg-config
+    pkgs.concurrently
     pkgs.nodePackages.typescript
   ];
 

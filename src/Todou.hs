@@ -71,6 +71,7 @@ import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
 import Debug.Trace (traceShowM)
 import Data.Word (Word8)
+import Codec.Compression.Zlib qualified as Zlib
 
 
 ----------------------------------------
@@ -727,11 +728,8 @@ instance ToJSON a => ToJSON (Err a) where
 -- | Frontend initial model
 data Model = Model
   { entries       :: [Entry]
-  , visibility    :: Text
-  , field         :: Text
   , nextId        :: EntryId
   , date          :: Text
-  , showCalendar  :: Bool
   , presenceMap   :: Integer
   , firstDay      :: Text
   }
@@ -740,18 +738,21 @@ data Model = Model
 instance ToJSON Model where
   toJSON model = Aeson.object
     [ "entries"      .= model.entries
-    , "visibility"   .= model.visibility
-    , "field"        .= model.field
     , "nextId"       .= model.nextId
     , "date"         .= model.date
-    , "showCalendar" .= model.showCalendar
     , "presenceMap"  .= b64EncodePresenceMap model.presenceMap
     , "firstDay"     .= model.firstDay
     ]
 
 
 b64EncodePresenceMap :: Integer -> Text
-b64EncodePresenceMap n = Text.decodeUtf8 (B64.encode (ByteString.pack (integerToBytes n)))
+b64EncodePresenceMap n = s5
+  where
+    s1 = integerToBytes n
+    s2 = ByteString.pack s1
+    s3 = Zlib.compress (ByteString.fromStrict s2)
+    s4 = B64.encode (ByteString.toStrict s3)
+    s5 = Text.decodeUtf8 s4
 
 
 integerToBytes :: Integer -> [Word8]
@@ -765,11 +766,8 @@ todoToModel :: Todo -> Model
 todoToModel todo =
   Model
     { entries      = todo.entries
-    , visibility   = "All"
-    , field        = mempty
     , nextId       = EntryId (lastId + 1)
     , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
-    , showCalendar = False
     , presenceMap  = 0
     , firstDay     = ""
     }
