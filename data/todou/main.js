@@ -135,10 +135,11 @@ function renderCalendar(model) {
         cday.setHours(0, 0, 0, 0);
         fday.setHours(0, 0, 0, 0);
         let diff = cday.getTime() - fday.getTime();
-        if (Number.isNaN(diff) || diff < 0)
+        if (Number.isNaN(diff)) {
             return "";
-        let delta = BigInt(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-        if ((model.presence & (1n << delta)) !== 0n) {
+        }
+        let delta = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        if (model.presence.has(delta)) {
             return "presence";
         }
         return "";
@@ -267,14 +268,12 @@ function nextCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    console.log(date);
     vdom.render();
 }
 function prevCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    console.log(date);
     vdom.render();
 }
 /*
@@ -345,15 +344,10 @@ function getDateFromPath(defaultDate = new Date()) {
     const date = new Date(year, month - 1, day);
     return isNaN(date.getTime()) ? defaultDate : date;
 }
-/* Convert base64 string into big int*/
-async function base64ToBigInt(b64) {
+async function base64ToBitSet(b64) {
     const blob = await fetch(`data:application/octet-stream;base64,${b64}`).then(r => r.blob());
     const bytes = await zlibDecompress(blob);
-    let result = 0n;
-    for (const byte of bytes) {
-        result = (result << 8n) + BigInt(byte);
-    }
-    return result;
+    return new BitSetView(bytes);
 }
 async function zlibDecompress(blob) {
     const ds = new DecompressionStream('deflate');
@@ -363,6 +357,42 @@ async function zlibDecompress(blob) {
 }
 function fmtYM(ymd) {
     return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}`;
+}
+/* Data */
+class BitSetView {
+    words;
+    constructor(input) {
+        if (ArrayBuffer.isView(input)) {
+            this.words = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+        }
+        else {
+            this.words = new Uint8Array(input);
+        }
+    }
+    add(i) {
+        this.words[i >> 3] |= (1 << (i & 7));
+    }
+    remove(i) {
+        this.words[i >> 3] &= ~(1 << (i & 7));
+    }
+    has(i) {
+        return (this.words[i >> 3] & (1 << (i & 7))) !== 0;
+    }
+    toggle(i) {
+        this.words[i >> 3] ^= i << (i & 7);
+    }
+    toString() {
+        return Array.from(this.words)
+            .map(word => {
+            return (word >>> 0) // Treat as unsigned
+                .toString(2)
+                .padStart(32, '0')
+                .split('')
+                .reverse()
+                .join('');
+        })
+            .join('');
+    }
 }
 /*
  * PWA
@@ -392,7 +422,7 @@ async function main() {
     model.field = "";
     model.visibility = "All";
     model.showCalendar = false;
-    model.presence = await base64ToBigInt(model.presenceMap);
+    model.presence = await base64ToBitSet(model.presenceMap);
     console.log('main', model);
     window.indexedDB.open('todou');
     vdom = newVdom({

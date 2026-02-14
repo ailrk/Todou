@@ -27,12 +27,13 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Builder qualified as Builder
 import Data.Char (isSpace)
 import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
 import Data.Function ((&), fix)
 import Data.Functor ((<&>))
-import Data.List (stripPrefix, foldl', sort)
+import Data.List (stripPrefix, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -50,7 +51,7 @@ import Data.Time
       getCurrentTime,
       utcToLocalTime,
       utc,
-      LocalTime(..), addDays )
+      LocalTime(..), addDays, diffDays )
 import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
@@ -70,7 +71,6 @@ import Web.Cookie (parseCookies)
 import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
 import Debug.Trace (traceShowM)
-import Data.Word (Word8)
 import Codec.Compression.Zlib qualified as Zlib
 
 
@@ -665,24 +665,35 @@ flush handle = do
       }
 
 
--- | Get the presence map of all todos
-getPresences :: Buffer -> IO (Maybe (Integer, Day))
-getPresences buffer@Buffer{ todos} = do
+getPresences :: Buffer -> IO (Maybe (ByteString, Day))
+getPresences buffer@Buffer { todos } =
   case getBufferDayRange buffer of
-    Just (from, to) -> do
-      let m = foldl' setIfTrue zeroBits
-            $ zip [0..]
-            $ fmap (isJust . cleanup . join . (`Map.lookup` todos)) [from..to]
-      pure (Just (m, from))
     Nothing -> pure Nothing
+    Just (from, to) -> do
+      -- create a set of keys
+      let isPresent = isJust . cleanup . join . (`Map.lookup` todos)
+      let bytes = daysToBytes isPresent from to
+      pure (Just (bytes, from))
   where
     cleanup = \case
       Just (Todo { entries = []} ) -> Nothing
       Nothing -> Nothing
       other -> other
 
-    setIfTrue acc (idx, True) = setBit acc idx
-    setIfTrue acc (_, False) = acc
+
+daysToBytes :: (Day -> Bool) -> Day -> Day -> ByteString
+daysToBytes isPresent start end = fst (ByteString.unfoldrN nBytes go start)
+  where
+    totalDays = fromIntegral (diffDays end start + 1)
+    nBytes    = (totalDays + 7) `div` 8
+    go c
+      | c > end = Nothing
+      | otherwise = Just (pack8Bits c 0 0)
+
+    pack8Bits d idx acc
+      | idx == 8 || d > end = (acc, d)
+      | isPresent d         = pack8Bits (addDays 1 d) (idx + 1) (setBit acc idx)
+      | otherwise           = pack8Bits (addDays 1 d) (idx + 1) acc
 
 
 ----------------------------------------
@@ -730,7 +741,7 @@ data Model = Model
   { entries       :: [Entry]
   , nextId        :: EntryId
   , date          :: Text
-  , presenceMap   :: Integer
+  , presenceMap   :: ByteString
   , firstDay      :: Text
   }
 
@@ -745,21 +756,12 @@ instance ToJSON Model where
     ]
 
 
-b64EncodePresenceMap :: Integer -> Text
-b64EncodePresenceMap n = s5
+b64EncodePresenceMap :: ByteString -> Text
+b64EncodePresenceMap bs = s3
   where
-    s1 = integerToBytes n
-    s2 = ByteString.pack s1
-    s3 = Zlib.compress (ByteString.fromStrict s2)
-    s4 = B64.encode (ByteString.toStrict s3)
-    s5 = Text.decodeUtf8 s4
-
-
-integerToBytes :: Integer -> [Word8]
-integerToBytes 0 = [0]
-integerToBytes n = fmap (fromIntegral . (.&. 0xff)) bytes
-  where
-    bytes = reverse $ takeWhile (> 0) (iterate (`shiftR` 8) n)
+    s1 = Zlib.compress (ByteString.fromStrict bs)
+    s2 = B64.encode (ByteString.toStrict s1)
+    s3 = Text.decodeUtf8 s2
 
 
 todoToModel :: Todo -> Model
@@ -768,7 +770,7 @@ todoToModel todo =
     { entries      = todo.entries
     , nextId       = EntryId (lastId + 1)
     , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
-    , presenceMap  = 0
+    , presenceMap  = ""
     , firstDay     = ""
     }
   where
@@ -805,7 +807,6 @@ index model = do
       div_ [ id_ "app" ] mempty
       script_ [ id_ "model" ] (Aeson.encode model)
       script_ [ src_ "main.js", type_ "module" ] (mempty @Text)
-
 
 
 server :: Options -> Handle -> IO ()
@@ -851,7 +852,7 @@ server Options { port } handle = scotty port do
 
     (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
       Just (p, d) -> pure (p, Text.pack (formatTime defaultTimeLocale "%Y-%m-%d" d))
-      Nothing -> pure (0, mempty)
+      Nothing -> pure ("", mempty)
 
     eModel <- case Map.lookup date buffer.todos of
       TodoLoaded todo -> do

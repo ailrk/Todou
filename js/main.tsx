@@ -35,7 +35,7 @@ interface Model {
   visibility: Visibility;
   field: string;
   showCalendar: boolean;
-  presence: bigint;
+  presence: BitSetView;
   calendar: YMD;
 }
 
@@ -271,9 +271,11 @@ function renderCalendar(model: Model) {
     cday.setHours(0, 0, 0, 0);
     fday.setHours(0, 0, 0, 0);
     let diff = cday.getTime() - fday.getTime();
-    if (Number.isNaN(diff) || diff < 0) return "";
-    let delta = BigInt(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    if ((model.presence & (1n << delta)) !== 0n) {
+    if (Number.isNaN(diff)) {
+      return "";
+    }
+    let delta = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    if (model.presence.has(delta)) {
         return "presence";
     }
     return "";
@@ -441,7 +443,6 @@ function nextCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  console.log(date)
   vdom.render()
 }
 
@@ -450,7 +451,6 @@ function prevCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  console.log(date)
   vdom.render()
 }
 
@@ -545,15 +545,10 @@ function getDateFromPath(defaultDate = new Date()) {
 }
 
 
-/* Convert base64 string into big int*/
-async function base64ToBigInt(b64: string): Promise<bigint> {
+async function base64ToBitSet(b64: string): Promise<BitSetView> {
   const blob = await fetch(`data:application/octet-stream;base64,${b64}`).then(r => r.blob());
   const bytes = await zlibDecompress(blob);
-  let result = 0n;
-  for (const byte of bytes) {
-    result = (result << 8n) + BigInt(byte);
-  }
-  return result;
+  return new BitSetView(bytes);
 }
 
 
@@ -568,6 +563,49 @@ async function zlibDecompress(blob: Blob) {
 function fmtYM(ymd: YMD): string {
   return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}`
 
+}
+
+/* Data */
+
+class BitSetView {
+  words: Uint8Array;
+
+  constructor(input: ArrayBufferLike | ArrayBufferView) {
+    if (ArrayBuffer.isView(input)) {
+      this.words = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    } else {
+      this.words = new Uint8Array(input);
+    }
+  }
+
+  add(i: number) {
+    this.words[i >> 3] |= (1 << (i & 7));
+  }
+
+  remove(i: number) {
+    this.words[i >> 3] &= ~(1 << (i & 7));
+  }
+
+  has(i: number) {
+    return (this.words[i >> 3] & (1 << (i & 7))) !== 0;
+  }
+
+  toggle(i: number) {
+    this.words[i >> 3] ^= i << (i & 7);
+  }
+
+  toString(): string { // dump as binary string
+    return Array.from(this.words)
+      .map(word => {
+        return (word >>> 0) // Treat as unsigned
+          .toString(2)
+          .padStart(32, '0')
+          .split('')
+          .reverse()
+          .join('');
+      })
+      .join('');
+  }
 }
 
 
@@ -604,7 +642,7 @@ async function main() {
   model.field        = "";
   model.visibility   = "All";
   model.showCalendar = false;
-  model.presence     = await base64ToBigInt(model.presenceMap);
+  model.presence     = await base64ToBitSet(model.presenceMap);
 
   console.log('main', model);
 

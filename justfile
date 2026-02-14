@@ -24,7 +24,7 @@ repl:
 profile:
     cabal clean
     cabal build --enable-profiling --disable-shared
-    # run with +RTS -hc -p -RTS to get heap dump and prof file
+    # run with +RTS -hc -p -l -RTS to get heap dump and prof file
 
 
 vis:
@@ -35,6 +35,7 @@ vis:
 clean:
     cabal clean
     rm -f todou.hp
+    rm -f todou.eventlog
     rm -f todou.ps
     rm -f todou.pdf
     rm -f todou.prof
