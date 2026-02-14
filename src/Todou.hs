@@ -801,7 +801,7 @@ index model = do
       link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
       link_ [ rel_ "stylesheet", href_ "/main.css" ]
       link_ [ rel_ "manifest", href_ "/manifest.json" ]
-      title_ "Toudo"
+      title_ "Todou"
     body_ do
       div_ [ id_ "app" ] mempty
       script_ [ id_ "model" ] (Aeson.encode model)
@@ -878,22 +878,21 @@ server Options { port } handle = scotty port do
         status status500
         text err
 
-
-  get "/main.js"                      do javascript $(FileEmbed.embedFile "data/todou/main.js")
-  get "/sw.js"                        do javascript $(FileEmbed.embedFile "data/todou/sw.js")
-  get "/vdom.js"                      do javascript $(FileEmbed.embedFile "data/todou/vdom.js")
-  get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-192x192.png")
-  get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFile "data/todou/web-app-manifest-512x512.png")
-  get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFile "data/todou/apple-touch-icon.png")
-  get "/favicon.ico"                  do ico        $(FileEmbed.embedFile "data/todou/favicon.ico")
-  get "/manifest.json"                do json'      $(FileEmbed.embedFile "data/todou/manifest.json")
-  get "/main.css"                     do css        $(FileEmbed.embedFile "data/todou/main.css")
-  get "/left-arrow.svg"               do svg        $(FileEmbed.embedFile "data/todou/left-arrow.svg")
-  get "/right-arrow.svg"              do svg        $(FileEmbed.embedFile "data/todou/right-arrow.svg")
-  get "/x.svg"                        do svg        $(FileEmbed.embedFile "data/todou/x.svg")
-  get "/calendar.svg"                 do svg        $(FileEmbed.embedFile "data/todou/calendar.svg")
-  get "/favicon.svg"                  do svg        $(FileEmbed.embedFile "data/todou/favicon.svg")
-  get "/rev"                          do plain      $(FileEmbed.embedFile "data/todou/rev")
+  get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
+  get "/sw.js"                        do javascript $(FileEmbed.embedFileRelative "data/todou/sw.js")
+  get "/vdom.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/vdom.js")
+  get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-192x192.png")
+  get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-512x512.png")
+  get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFileRelative "data/todou/apple-touch-icon.png")
+  get "/favicon.ico"                  do ico        $(FileEmbed.embedFileRelative "data/todou/favicon.ico")
+  get "/manifest.json"                do json'      $(FileEmbed.embedFileRelative "data/todou/manifest.json")
+  get "/main.css"                     do css        $(FileEmbed.embedFileRelative "data/todou/main.css")
+  get "/left-arrow.svg"               do svg        $(FileEmbed.embedFileRelative "data/todou/left-arrow.svg")
+  get "/right-arrow.svg"              do svg        $(FileEmbed.embedFileRelative "data/todou/right-arrow.svg")
+  get "/x.svg"                        do svg        $(FileEmbed.embedFileRelative "data/todou/x.svg")
+  get "/calendar.svg"                 do svg        $(FileEmbed.embedFileRelative "data/todou/calendar.svg")
+  get "/favicon.svg"                  do svg        $(FileEmbed.embedFileRelative "data/todou/favicon.svg")
+  get "/rev"                          do plain      $(FileEmbed.embedFileRelative "data/todou/rev")
 
 
   -- add a new entry

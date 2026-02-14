@@ -7,7 +7,14 @@ author:             Ailrk
 maintainer:         jimmy123good@gmail.com
 category:           Web
 build-type:         Simple
-extra-doc-files:    CHANGELOG.md
+extra-source-files:
+    data/todou/*.js
+    data/todou/*.css
+    data/todou/*.svg
+    data/todou/*.png
+    data/todou/*.ico
+    data/todou/manifest.json
+    data/todou/rev
 
 
 common extensions

@@ -22,6 +22,32 @@ Todou is flexible about where the data lives. You can choose your backend using 
 |SQLite|sqlite:/path/to/db.sqlite|Uses a relational database for structured storage.|
 |S3|s3:bucket-name|Stores data in an AWS S3 bucket (or S3-compatible API).|
 
+
+## Docker
+
+There is a multi-stage Docker image. To try it out, run the following commands:
+
+```bash
+docker build -t todou-app .
+mkdir -p todo-data
+docker run --name todou-app \
+    -p 5000:5000 \
+    -v $(pwd)/todo-data:/data \
+    todou-app
+```
+
+The default parameter uses `--storage=dir:/data`, so this will run todou on port 5000.
+
+Here is another example to run Todou with S3 backend.
+
+```bash
+docker run --name todou-app \
+    -e AWS_ACCESS_KEY_ID=XYZ
+    -e AWS_SECRET_ACCESS_KEY=123 \
+    -p 8080:8080 \
+    todou-app -port=8080 --storage="s3:my-bucket"
+```
+
 ## Nix
 
 Todou provides a nix module out of the box. It supports running multiple instances of the service. The following is the basic setup:
