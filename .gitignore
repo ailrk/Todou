@@ -6,6 +6,7 @@
 *.prof
 *.ps
 .env
+.exrc
 .profile
 _cache/
 _site/
