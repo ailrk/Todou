@@ -264,8 +264,7 @@ function renderCalendar(model: Model) {
       model.entries.length > 0) {
       return "presence"
     }
-
-    let cday = new Date(model.calendar.year, model.calendar.month, 1);
+    let cday = new Date(fmtYMD(model.calendar) + "T00:00:00");
     let fday = new Date(model.firstDay + "T00:00:00"); // use local time
     cday.setDate(i);
     cday.setHours(0, 0, 0, 0);
@@ -562,8 +561,14 @@ async function zlibDecompress(blob: Blob) {
 
 function fmtYM(ymd: YMD): string {
   return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}`
-
 }
+
+
+function fmtYMD(ymd: YMD): string {
+  let d = ymd.day ? ymd.day : 1;
+  return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 
 /* Data */
 
