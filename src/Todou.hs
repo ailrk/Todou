@@ -356,7 +356,7 @@ createSqliteSchema conn = do
         ( id          INTEGER KEY NOT NULL
         , description TEXT NOT NULL
         , completed   BOOLEAN NOT NULL
-        , todo_date   INTEGER NOT NULL
+        , todo_date   TEXT NOT NULL
         , UNIQUE(id, todo_date)
         , FOREIGN KEY(todo_date) REFERENCES todo(date) ON DELETE CASCADE
         );
