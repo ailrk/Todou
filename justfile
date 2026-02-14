@@ -3,6 +3,7 @@ default:
 
 build:
     cabal2nix . > default.nix
+    just buildjs
     nix build
 
 buildjs:
