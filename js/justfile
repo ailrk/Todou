@@ -5,3 +5,4 @@ build:
     cp ./svg/* ./dist
     cp ./icons/* ./dist
     cp manifest.json ./dist
+    git rev-parse --short HEAD > rev && cp rev ./dist

@@ -777,13 +777,14 @@ todoToModel todo =
       | otherwise        = maximum (fmap (.entryId) todo.entries)
 
 
-json', javascript, css, png, ico, svg :: ByteString -> ActionM ()
+json', javascript, css, png, ico, svg, plain :: ByteString -> ActionM ()
 json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
 javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
 css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
 png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
 ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
 svg bytes        = setHeader "Content-Type" "image/svg+xml" >> (raw . ByteString.fromStrict $ bytes)
+plain bytes      = setHeader "Content-Type" "text/plain" >> (raw . ByteString.fromStrict $ bytes)
 
 
 index :: Model -> Html ()
@@ -892,6 +893,7 @@ server Options { port } handle = scotty port do
   get "/x.svg"                        do svg        $(FileEmbed.embedFile "data/todou/x.svg")
   get "/calendar.svg"                 do svg        $(FileEmbed.embedFile "data/todou/calendar.svg")
   get "/favicon.svg"                  do svg        $(FileEmbed.embedFile "data/todou/favicon.svg")
+  get "/rev"                          do plain      $(FileEmbed.embedFile "data/todou/rev")
 
 
   -- add a new entry
