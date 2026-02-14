@@ -48,6 +48,8 @@ docker run --name todou-app \
     todou-app -port=8080 --storage="s3:my-bucket"
 ```
 
+Todou binary is 2.5MB, but the docker image is about 155MB. Most overhead is on the OS base itself, the rest are some dependencies like `libgmp` and `libsqlite`. I didn't try to optimize for image size yet, I think we can do better than 155MB.
+
 ## Nix
 
 Todou provides a nix module out of the box. It supports running multiple instances of the service. The following is the basic setup:
@@ -64,12 +66,14 @@ Todou provides a nix module out of the box. It supports running multiple instanc
 
 For S3 storage, you can provide environment variables (like AWS keys) an internal file with tools like `nix-sops` to keep the secrets safe. The environment file should contain normal aws secrets like `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, etc.
 
+```nix
 services.todou."work" = {
   enable = true;
   port = 5001;
   storage = "s3:my-company-todos";
   environment = "/run/secrets/todou-s3-creds";
 };
+```
 
 
 ## Cli
