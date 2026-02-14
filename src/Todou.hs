@@ -15,7 +15,7 @@ import Amazonka.S3.Types.Object (Object(..))
 import Conduit qualified
 import Control.Applicative (Alternative((<|>)), asum)
 import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar, modifyMVar_, modifyMVar)
-import Control.Concurrent.MVar (MVar, newMVar, takeMVar, putMVar)
+import Control.Concurrent.MVar (MVar, newMVar)
 import Control.Exception (try, SomeException, Exception (..))
 import Control.Monad (unless, when, forM_, forever, join, void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -122,7 +122,7 @@ instance FromJSON Entry where
     Entry
       <$> (o .: "id")
       <*> (o .: "description")
-      <*> (o .: "completion")
+      <*> (o .: "completed")
 
 
 -- | Todo entries for a single day
@@ -575,7 +575,6 @@ loadTodo handle date = do
             case mTodo of
               Just todo -> pure do
                 buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                       , dirtyCounts = buffer.dirtyCounts + 1
                        }
               Nothing -> pure buffer
           Sqlite3Handle conn _ -> do
@@ -588,7 +587,6 @@ loadTodo handle date = do
                   }
             pure do
               buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                     , dirtyCounts = buffer.dirtyCounts + 1
                      }
           S3Handle env bucket _ -> do
             let request = Amazonka.newGetObject (Amazonka.BucketName bucket) (Amazonka.ObjectKey (Text.pack dateStr))
@@ -599,7 +597,6 @@ loadTodo handle date = do
             case mTodo of
               Just todo -> pure do
                 buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                       , dirtyCounts = buffer.dirtyCounts + 1
                        }
               Nothing -> pure buffer
   buffer <- readMVar (getBufferMVar handle)
@@ -848,7 +845,7 @@ server Options { port } handle = scotty port do
 
     buffer <- liftIO do
       flush handle -- flush on refresh
-      takeMVar bufferMvar
+      readMVar bufferMvar
 
     (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
       Just (p, d) -> pure (p, Text.pack (formatTime defaultTimeLocale "%Y-%m-%d" d))
@@ -856,16 +853,13 @@ server Options { port } handle = scotty port do
 
     eModel <- case Map.lookup date buffer.todos of
       TodoLoaded todo -> do
-        liftIO $ putMVar bufferMvar buffer
         pure (Right (todoToModel todo))
       TodoNotLoaded -> do
-        liftIO $ putMVar bufferMvar buffer
         liftIO (loadTodo handle date) >>= \case
           Just todo -> pure (Right (todoToModel todo))
           Nothing -> pure (Left "Can't find the todo data")
       TodoNotExists -> do -- not in storage, create an empty one
         let newTodo = Todo { entries = [], date = date, dirty = True }
-        liftIO $ putMVar bufferMvar buffer
         pure (Right (todoToModel newTodo))
 
     case eModel of
