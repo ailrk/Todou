@@ -4,9 +4,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 -- Backend for Todou app
---
--- A Todou is a list of Todos, in which is a list of entries. A todo
--- represents the todo list of a single day.
+
 module Todou where
 
 import Amazonka qualified
@@ -84,6 +82,9 @@ flushPeriod = 5 * 1000000
 ----------------------------------------
 -- Domain
 ----------------------------------------
+
+-- A Todou is a list of Todos. A Todo is a list of entries.
+-- Each Todo represents the todo list of one day.
 
 
 -- | EntryId unique on each todou file per day. To universally

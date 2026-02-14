@@ -90,7 +90,7 @@ todou --port=8080 --storage="sqlite:db.sqlite"
 
 ## Design
 
-Todou uses a buffered model, data is loaded from storage into an in-memory buffer on demand. Mutations happen instantly in memory. A background flusher thread runs every 5 seconds to persist "dirty" cahnges back to the storage backend.
+Todou uses a buffered model, data is loaded from storage into an in-memory buffer on demand. Mutations happen instantly in memory. A background flusher thread runs every 5 seconds to persist "dirty" changes back to the storage backend.
 
 This design avoids frequent access to the storage, but we have to make sure the writer is unique, otherwise the buffer can go out of sync. So be aware if you want to spin multiple instances hosting the same storage backend.
 
