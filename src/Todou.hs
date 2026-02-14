@@ -27,7 +27,6 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
 import Data.ByteString.Lazy qualified as LBS
-import Data.ByteString.Builder qualified as Builder
 import Data.Char (isSpace)
 import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
@@ -70,7 +69,6 @@ import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, 
 import Web.Cookie (parseCookies)
 import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
-import Debug.Trace (traceShowM)
 import Codec.Compression.Zlib qualified as Zlib
 
 
