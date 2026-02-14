@@ -138,7 +138,7 @@ function renderCalendar(model) {
         if (Number.isNaN(diff)) {
             return "";
         }
-        let delta = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        let delta = Math.trunc(diff / (1000 * 60 * 60 * 24));
         if (model.presence.has(delta)) {
             return "presence";
         }
