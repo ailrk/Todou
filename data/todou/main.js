@@ -144,7 +144,20 @@ function renderCalendar(model) {
         }
         return "";
     }
-    return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, onclick: (ev) => {
+    return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, tabindex: "-1", onkeydown: (ev) => {
+            // Prevent the page from scrolling when using arrows
+            if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+                ev.preventDefault();
+            }
+            switch (ev.key) {
+                case "ArrowLeft":
+                    prevCalendar(model);
+                    break;
+                case "ArrowRight":
+                    nextCalendar(model);
+                    break;
+            }
+        }, onclick: (ev) => {
             if (document.querySelector('.calendar-content').contains(ev.target))
                 return;
             toggleCalendar(model, false);
@@ -263,6 +276,12 @@ function toggleCalendar(model, show) {
         model.calendar.month = date.getMonth();
     }
     vdom.render();
+    if (model.showCalendar) {
+        const el = document.querySelector('.calendar-modal');
+        if (el !== undefined) {
+            el.focus();
+        }
+    }
 }
 function nextCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month + 1, 1);

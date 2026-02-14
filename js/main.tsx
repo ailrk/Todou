@@ -284,16 +284,32 @@ function renderCalendar(model: Model) {
     <div
       class="calendar-modal"
       hidden={!model.showCalendar}
+      tabindex="-1"
+      onkeydown={(ev: KeyboardEvent) => {
+        // Prevent the page from scrolling when using arrows
+        if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+          ev.preventDefault();
+        }
+
+        switch (ev.key) {
+          case "ArrowLeft":
+            prevCalendar(model);
+            break;
+          case "ArrowRight":
+            nextCalendar(model);
+            break;
+        }
+      }}
       onclick={(ev: MouseEvent) => {
         if (document.querySelector('.calendar-content')!.contains(ev.target as Node)) return;
         toggleCalendar(model, false)
       }} >
-      <div class="calendar-content">
-        <span class="calendar-header">
-          <button onclick={(_: MouseEvent) => { prevCalendar(model)} }/>
-          <h1>{formatted}</h1>
-          <button onclick={(_: MouseEvent) => { nextCalendar(model)} }/>
-        </span>
+        <div class="calendar-content">
+          <span class="calendar-header">
+            <button onclick={(_: MouseEvent) => { prevCalendar(model)} }/>
+            <h1>{formatted}</h1>
+            <button onclick={(_: MouseEvent) => { nextCalendar(model)} }/>
+          </span>
 
         <ol class="calendar">
           <li class="day-name">Sun</li> <li class="day-name">Mon</li> <li class="day-name">Tue</li>
@@ -435,6 +451,13 @@ function toggleCalendar(model: Model, show?: boolean) {
   }
 
   vdom.render();
+
+  if (model.showCalendar) {
+    const el = document.querySelector('.calendar-modal');
+    if (el !== undefined) {
+      (el as HTMLElement).focus();
+    }
+  }
 }
 
 
