@@ -68,7 +68,7 @@
           };
 
           checks = {
-            todou-tests = hspkgs.todou;
+            todou-tests = pkgs.haskell.lib.doCheck hspkgs.todou;
           };
         };
     in
