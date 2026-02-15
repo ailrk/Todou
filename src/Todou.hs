@@ -33,7 +33,7 @@ import Data.Functor ((<&>))
 import Data.List (stripPrefix, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.String.Interpolate (iii, i)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -105,7 +105,7 @@ data Entry = Entry
   , description :: Text
   , completed   :: Bool
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 
 instance ToJSON Entry where
@@ -131,7 +131,7 @@ data Todo = Todo
   , date :: Day
   , dirty :: Bool -- indicate if the Todo is modified.
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 
 instance ToJSON Todo where
@@ -193,10 +193,10 @@ updateTodo date f buffer =
 
 
 insertTodo :: Day -> Todo -> Buffer -> Buffer
-insertTodo date todo buffer =
+insertTodo date todo buffer@Buffer{ todos, dirtyCounts } =
   buffer
-    { dirtyCounts = buffer.dirtyCounts + 1
-    , todos = Map.insert date (Just todo { dirty = True }) buffer.todos
+    { dirtyCounts = dirtyCounts + 1
+    , todos = Map.insert date (Just todo { dirty = True }) todos
     }
 
 
@@ -231,7 +231,7 @@ parseLine line =
 
 parseEntry :: [Text] -> Maybe Entry
 parseEntry ls = do
-  kvs         <- traverse parseLine ls
+  let kvs      = mapMaybe parseLine ls
   entryId     <- lookup "id" kvs >>= readMaybe . Text.unpack <&> EntryId
   description <- lookup "description" kvs
 
@@ -284,7 +284,7 @@ parseIni txt = traverse parseSection (splitSections . Text.lines  $ txt)
 parseTodo :: Text -> Maybe Todo
 parseTodo txt = do
   sections <- parseIni txt
-  let (entries, mDate) = foldr (\section (es, md)->
+  let (entries, mDate) = foldr (\section (es, md) ->
         case section of
           EntrySection e   -> (e:es, md)
           MetaSection date -> (es, Just date)
@@ -300,24 +300,23 @@ parseTodo txt = do
 
 
 dumpTodo :: Todo -> Text
-dumpTodo (Todo { entries, date })
-  = Text.unlines
-  . mconcat
-  $
-    [ [ dumpDate date ]
-    , fmap dumpEntry entries
-    ]
+dumpTodo (Todo { entries, date }) = Text.unlines (fmap Text.unlines ls)
+  where
+    ls = mconcat
+        [ [ dumpDate date ]
+        , fmap dumpEntry entries
+        ]
 
 
-dumpDate :: Day -> Text
-dumpDate date = Text.unlines
+dumpDate :: Day -> [Text]
+dumpDate date =
   [ "[date]"
   , Text.pack ("date = " <> formatTime defaultTimeLocale  "%Y-%m-%d" date)
   ]
 
 
-dumpEntry :: Entry -> Text
-dumpEntry (Entry { entryId = EntryId entryId, description, completed }) = Text.unlines
+dumpEntry :: Entry -> [Text]
+dumpEntry (Entry { entryId = EntryId entryId, description, completed }) =
   [ "[entry]"
   , "id = " <> Text.pack (show entryId)
   , "description = " <> description
@@ -567,41 +566,42 @@ loadTodo handle date = do
     case Map.lookup date buffer.todos of
       TodoLoaded _ -> pure buffer
       TodoNotExists -> pure buffer
-      TodoNotLoaded -> do
-        let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-        case handle of
-          FileSystemHandle dir _ -> do
-            mTodo <- parseTodo <$> Text.readFile (dir </> dateStr <> ".todou")
-            case mTodo of
-              Just todo -> pure do
-                buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                       }
-              Nothing -> pure buffer
-          Sqlite3Handle conn _ -> do
-            entries <- Sqlite.query conn
-              [i|SELECT (id, description, completed) FROM entry WHERE todo_date = (?); |] (Only dateStr)
-            let todo = Todo
-                  { entries = entries
-                  , date    = date
-                  , dirty   = False
-                  }
-            pure do
-              buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                     }
-          S3Handle env bucket _ -> do
-            let request = Amazonka.newGetObject (Amazonka.BucketName bucket) (Amazonka.ObjectKey (Text.pack dateStr))
-            chunks <- Amazonka.runResourceT do
-              resp <- Amazonka.send env request
-              Conduit.runConduit $ resp.body.body Conduit..| Conduit.sinkList
-            let mTodo = parseTodo . Text.decodeUtf8 . LBS.toStrict . LBS.fromChunks $ chunks
-            case mTodo of
-              Just todo -> pure do
-                buffer { todos       = Map.alter (\_ -> TodoLoaded todo) date buffer.todos
-                       }
-              Nothing -> pure buffer
+      TodoNotLoaded -> loadTodoFromStorage handle date buffer
   buffer <- readMVar (getBufferMVar handle)
   pure do
     join (Map.lookup date buffer.todos)
+
+
+loadTodoFromStorage :: Handle -> Day -> Buffer -> IO Buffer
+loadTodoFromStorage handle date buffer = do
+  let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
+  case handle of
+    FileSystemHandle dir _ -> do
+      mTodo <- parseTodo <$> Text.readFile (dir </> dateStr <> ".todou")
+      case mTodo of
+        Just todo -> pure do
+          buffer { todos = Map.alter (\_ -> TodoLoaded todo) date buffer.todos }
+        Nothing -> pure buffer
+    Sqlite3Handle conn _ -> do
+      entries <- Sqlite.query conn
+        [i|SELECT id, description, completed FROM entry WHERE todo_date = (?); |] (Only dateStr)
+      let todo = Todo
+            { entries = entries
+            , date    = date
+            , dirty   = False
+            }
+      pure do
+        buffer { todos = Map.alter (\_ -> TodoLoaded todo) date buffer.todos }
+    S3Handle env bucket _ -> do
+      let request = Amazonka.newGetObject (Amazonka.BucketName bucket) (Amazonka.ObjectKey (Text.pack dateStr))
+      chunks <- Amazonka.runResourceT do
+        resp <- Amazonka.send env request
+        Conduit.runConduit $ resp.body.body Conduit..| Conduit.sinkList
+      let mTodo = parseTodo . Text.decodeUtf8 . LBS.toStrict . LBS.fromChunks $ chunks
+      case mTodo of
+        Just todo -> pure do
+          buffer { todos = Map.alter (\_ -> TodoLoaded todo) date buffer.todos }
+        Nothing -> pure buffer
 
 
 -- | Load all todos into model
@@ -623,42 +623,45 @@ flush handle = do
       forM_ buffer.todos \case
         Nothing -> pure ()
         Just (Todo { dirty = False }) -> pure ()
-        Just todo@(Todo { entries, date, dirty = True }) -> do
-          let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
-          case handle of
-            FileSystemHandle dirPath _ -> do
-              let path = dirPath </> dateStr <> ".todou"
-              Text.writeFile path (dumpTodo todo)
-            Sqlite3Handle conn _ -> do
-              Sqlite.execute conn
-                [iii|
-                      INSERT INTO todo (date) VALUES (?)
-                      ON CONFLICT(date) DO NOTHING;
-                |] (Only date)
-              let ids = fmap (.entryId) entries
-              let placeholders = Query ("(" <> Text.intercalate "," (replicate (length ids) "?") <> ")")
-              Sqlite.execute conn
-                (" DELETE FROM entry where todo_date = (?) AND id NOT IN " <> placeholders)
-                (Only date :. ids)
-              Sqlite.executeMany conn
-                [iii|
-                      INSERT INTO entry (todo_date, id, description, completed) VALUES (?,?,?,?)
-                      ON CONFLICT(id, todo_date) DO UPDATE SET
-                        description = excluded.description,
-                        completed   = excluded.completed;
-                |]
-                $ fmap (Only date :.) entries
-            S3Handle env bucket _ -> do
-              let req = Amazonka.newPutObject
-                    (Amazonka.BucketName bucket)
-                    (Amazonka.ObjectKey (Text.pack dateStr))
-                    (Amazonka.toBody (dumpTodo todo))
-              void . Amazonka.runResourceT $ Amazonka.send env req
-
+        Just todo@(Todo { dirty = True }) -> flushOnDirty handle todo
     pure $ buffer
       { dirtyCounts = 0
       , todos = (fmap . fmap) (\todo -> todo { dirty = False }) buffer.todos
       }
+
+
+flushOnDirty :: Handle -> Todo -> IO ()
+flushOnDirty handle todo@(Todo { entries, date }) = do
+  let dateStr = formatTime defaultTimeLocale  "%Y-%m-%d" date
+  case handle of
+    FileSystemHandle dirPath _ -> do
+      let path = dirPath </> dateStr <> ".todou"
+      Text.writeFile path (dumpTodo todo)
+    Sqlite3Handle conn _ -> do
+      Sqlite.execute conn
+        [iii|
+              INSERT INTO todo (date) VALUES (?)
+              ON CONFLICT(date) DO NOTHING;
+        |] (Only date)
+      let ids = fmap (.entryId) entries
+      let placeholders = Query ("(" <> Text.intercalate "," (replicate (length ids) "?") <> ")")
+      Sqlite.execute conn
+        (" DELETE FROM entry where todo_date = (?) AND id NOT IN " <> placeholders)
+        (Only date :. ids)
+      Sqlite.executeMany conn
+        [iii|
+              INSERT INTO entry (todo_date, id, description, completed) VALUES (?,?,?,?)
+              ON CONFLICT(id, todo_date) DO UPDATE SET
+                description = excluded.description,
+                completed   = excluded.completed;
+        |]
+        $ fmap (Only date :.) entries
+    S3Handle env bucket _ -> do
+      let req = Amazonka.newPutObject
+            (Amazonka.BucketName bucket)
+            (Amazonka.ObjectKey (Text.pack dateStr))
+            (Amazonka.toBody (dumpTodo todo))
+      void . Amazonka.runResourceT $ Amazonka.send env req
 
 
 getPresences :: Buffer -> IO (Maybe (ByteString, Day))

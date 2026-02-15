@@ -66,6 +66,10 @@
             default = todou;
             todou= pkgs.todou;
           };
+
+          checks = {
+            todou-tests = hspkgs.todou;
+          };
         };
     in
     { inherit overlay; } // flake-utils.lib.eachDefaultSystem perSystem;

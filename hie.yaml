@@ -5,3 +5,6 @@ cradle:
 
     - path: "app"
       component: "exe:todou"
+
+    - path: "test"
+      component: "test:todou-test"
