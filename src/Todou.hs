@@ -35,6 +35,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.String.Interpolate (iii, i)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -48,7 +50,7 @@ import Data.Time
       getCurrentTime,
       utcToLocalTime,
       utc,
-      LocalTime(..), addDays, diffDays )
+      LocalTime(..), addDays, diffDays, fromGregorian )
 import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
@@ -669,8 +671,11 @@ getPresences buffer@Buffer { todos } =
   case getBufferDayRange buffer of
     Nothing -> pure Nothing
     Just (from, to) -> do
-      -- create a set of keys
-      let isPresent = isJust . cleanup . join . (`Map.lookup` todos)
+      let isPresent d = Set.member d
+            . Set.fromList
+            . fmap fst
+            . filter (\(_, v) -> isJust (cleanup v))
+            $ Map.toList todos
       let bytes = daysToBytes isPresent from to
       pure (Just (bytes, from))
   where
@@ -843,6 +848,9 @@ server Options { port } handle = scotty port do
   -- render the todo data for one date.
   get "/:date" do
     date <- captureParam @Day "date"
+
+    when (date > fromGregorian 9999 12 31) do
+      redirect "/"
 
     let bufferMvar = getBufferMVar handle
 
