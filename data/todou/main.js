@@ -4,7 +4,7 @@ import { newVdom, h } from "./vdom.js";
  * Render
  */
 function renderTodou(model) {
-    return (h("div", { class: "todou-container" },
+    return (h("div", { class: "todou-container", tabindex: "-1" },
         h("nav", { onclick: (_) => { toggleCalendar(model); } },
             h("span", null,
                 " ",
@@ -149,6 +149,7 @@ function renderCalendar(model) {
             if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
                 ev.preventDefault();
             }
+            ev.stopPropagation();
             switch (ev.key) {
                 case "ArrowLeft":
                     prevCalendar(model);
@@ -274,13 +275,21 @@ function toggleCalendar(model, show) {
         const date = new Date(model.date + "T00:00:00");
         model.calendar.year = date.getFullYear();
         model.calendar.month = date.getMonth();
+        console.log('1', document.activeElement);
+        const app = document.querySelector('body');
+        if (app !== null) {
+            app.focus();
+        }
+        console.log('2', document.activeElement);
     }
     vdom.render();
     if (model.showCalendar) {
+        console.log('3', document.activeElement);
         const el = document.querySelector('.calendar-modal');
-        if (el !== undefined) {
+        if (el !== null) {
             el.focus();
         }
+        console.log('4', document.activeElement);
     }
 }
 function nextCalendar(model) {
@@ -294,6 +303,20 @@ function prevCalendar(model) {
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
     vdom.render();
+}
+function nextDay(model) {
+    console.log('nd');
+    const d = new Date(model.date + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    const formatted = d.toISOString().split('T')[0];
+    window.location.href = `/${formatted}`;
+}
+function prevDay(model) {
+    console.log('pd');
+    const d = new Date(model.date + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    const formatted = d.toISOString().split('T')[0];
+    window.location.href = `/${formatted}`;
 }
 /*
  * API
@@ -447,7 +470,19 @@ async function main() {
     model.showCalendar = false;
     model.presence = await base64ToBitSet(model.presenceMap);
     console.log('main', model);
-    window.indexedDB.open('todou');
+    document.body.addEventListener('keydown', (ev) => {
+        if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+            ev.preventDefault();
+        }
+        switch (ev.key) {
+            case "ArrowLeft":
+                prevDay(model);
+                break;
+            case "ArrowRight":
+                nextDay(model);
+                break;
+        }
+    });
     vdom = newVdom({
         model: model,
         render: renderTodou,

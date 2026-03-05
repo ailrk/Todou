@@ -47,7 +47,7 @@ interface Model {
 
 function renderTodou(model: Model): VNode {
   return (
-    <div class="todou-container">
+    <div class="todou-container" tabindex="-1">
       <nav onclick={(_: MouseEvent) => { toggleCalendar(model); }} >
         <span> {model.date} </span>
       </nav>
@@ -290,6 +290,7 @@ function renderCalendar(model: Model) {
         if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
           ev.preventDefault();
         }
+        ev.stopPropagation();
 
         switch (ev.key) {
           case "ArrowLeft":
@@ -448,15 +449,24 @@ function toggleCalendar(model: Model, show?: boolean) {
     const date = new Date(model.date + "T00:00:00");
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
+
+    console.log('1', document.activeElement)
+    const app = document.querySelector('body');
+    if (app !== null) {
+      (app as HTMLElement).focus();
+    }
+    console.log('2', document.activeElement)
   }
 
   vdom.render();
 
   if (model.showCalendar) {
+    console.log('3', document.activeElement)
     const el = document.querySelector('.calendar-modal');
-    if (el !== undefined) {
+    if (el !== null) {
       (el as HTMLElement).focus();
     }
+    console.log('4', document.activeElement)
   }
 }
 
@@ -476,6 +486,23 @@ function prevCalendar(model: Model) {
   vdom.render()
 }
 
+
+function nextDay(model: Model) {
+  console.log('nd')
+  const d = new Date(model.date + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  const formatted = d.toISOString().split('T')[0];
+  window.location.href = `/${formatted}`;
+}
+
+
+function prevDay(model: Model) {
+  console.log('pd')
+  const d = new Date(model.date + "T00:00:00");
+  d.setDate(d.getDate() - 1);
+  const formatted = d.toISOString().split('T')[0];
+  window.location.href = `/${formatted}`;
+}
 
 
 /*
@@ -654,6 +681,8 @@ if ('serviceWorker' in navigator && window.top === window.self) {
  */
 
 
+
+
 async function main() {
   let el= document.getElementById("model");
   if (!el) {
@@ -674,7 +703,19 @@ async function main() {
 
   console.log('main', model);
 
-  window.indexedDB.open('todou');
+  document.body.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+      ev.preventDefault();
+    }
+    switch (ev.key) {
+      case "ArrowLeft":
+      prevDay(model);
+        break;
+      case "ArrowRight":
+      nextDay(model);
+        break;
+    }
+  });
 
   vdom = newVdom({
     model: model,
