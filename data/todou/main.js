@@ -107,7 +107,7 @@ function renderCalendar(model) {
         if (model.calendar.year === now.getFullYear() &&
             model.calendar.month === now.getMonth() &&
             i === now.getDate())
-            return "today";
+            return " cal-today";
         else
             return "";
     }
@@ -115,7 +115,7 @@ function renderCalendar(model) {
         if (model.calendar.year === date.getFullYear() &&
             model.calendar.month === date.getMonth() &&
             date.getDate() === i)
-            return "current";
+            return " cal-current";
         else
             return "";
     }
@@ -125,7 +125,7 @@ function renderCalendar(model) {
             model.calendar.month === date.getMonth() &&
             i === date.getDate()) {
             if (model.entries.length > 0) {
-                return "presence";
+                return " cal-presence";
             }
         }
         if (model.firstDay === "")
@@ -139,11 +139,16 @@ function renderCalendar(model) {
         if (Number.isNaN(diff)) {
             return "";
         }
+        // build from presence map
         let delta = Math.trunc(diff / (1000 * 60 * 60 * 24));
-        if (model.presence.has(delta)) {
-            return "presence";
+        let result = "";
+        if (model.presence.hasDay(delta)) {
+            result += " cal-presence";
         }
-        return "";
+        if (model.presence.completed(delta)) {
+            result += " cal-completed";
+        }
+        return result;
     }
     return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, tabindex: "-1", onkeydown: (ev) => {
             // Prevent the page from scrolling when using arrows
@@ -383,7 +388,7 @@ function getDateFromPath(defaultDate = new Date()) {
 async function base64ToBitSet(b64) {
     const blob = await fetch(`data:application/octet-stream;base64,${b64}`).then(r => r.blob());
     const bytes = await zlibDecompress(blob);
-    return new BitSetView(bytes);
+    return new PresenceView(bytes);
 }
 async function zlibDecompress(blob) {
     const ds = new DecompressionStream('deflate');
@@ -399,39 +404,53 @@ function fmtYMD(ymd) {
     return `${ymd.year}-${String(ymd.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 /* Data */
-class BitSetView {
-    words;
+// nBits per segment. A segment holds all the flags for a day.
+// This number depends on the presence map format from the backend.
+const NBITS = 2;
+// Number of segments per byte
+const NSEGS = 8 / NBITS;
+{ /* // Shift n on segment index to get the bit index. */ }
+{ /* const SEGIDX             = Math.log(NSEGS)|0; */ }
+const PRESENCE_DAY = 0;
+const PRESENCE_COMPLETED = 1;
+class PresenceView {
+    bytes;
     constructor(input) {
+        // PresenceView takes the owndership of the buffer.
+        // If we get a view, we copy the view into a new buffer. Otherwise we simply
+        // take it.
         if (ArrayBuffer.isView(input)) {
-            this.words = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+            this.bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
         }
         else {
-            this.words = new Uint8Array(input);
+            this.bytes = new Uint8Array(input);
         }
     }
-    add(i) {
-        this.words[i >> 3] |= (1 << (i & 7));
+    // @i: the number of segment. represents day
+    seg(i) {
+        if (NBITS < 0 && (NBITS & NBITS - 1) !== 0) {
+            console.error("seg size must be positive and power of 2");
+        }
+        return (this.bytes[Math.trunc(i / NSEGS)] >> (NBITS * (i % NSEGS))) & (2 ^ (NBITS - 1));
     }
-    remove(i) {
-        this.words[i >> 3] &= ~(1 << (i & 7));
+    hasDay(i) {
+        return (this.seg(i) >> PRESENCE_DAY) & 1;
     }
-    has(i) {
-        return (this.words[i >> 3] & (1 << (i & 7))) !== 0;
+    completed(i) {
+        return (this.seg(i) >> PRESENCE_COMPLETED) & 1;
     }
-    toggle(i) {
-        this.words[i >> 3] ^= i << (i & 7);
-    }
-    toString() {
-        return Array.from(this.words)
-            .map(word => {
-            return (word >>> 0) // Treat as unsigned
-                .toString(2)
-                .padStart(32, '0')
-                .split('')
-                .reverse()
-                .join('');
-        })
-            .join('');
+    dump() {
+        function byteToHex(byte) {
+            // Ensure the byte value is treated as an unsigned 8-bit integer (0-255)
+            // which is useful if the input might be a signed number.
+            const unsignedByte = byte & 0xFF;
+            // Convert the number to a base-16 string.
+            const hex = unsignedByte.toString(16);
+            // Pad with a leading '0' and take the last two characters to ensure
+            // a consistent 2-character output (e.g., 5 becomes "05").
+            return hex.padStart(2, '0');
+        }
+        this.bytes.forEach(b => console.log(byteToHex(b)));
     }
 }
 /*

@@ -560,12 +560,12 @@ html .clear-completed:active {
 }
 
 
-.today, .current {
+.cal-today, .cal-current {
   color: white;
 }
 
 
-.today::before, .current::before {
+.cal-today::before, .cal-current::before {
   content: "";
   position: absolute;
   width: 22px;
@@ -576,17 +576,17 @@ html .clear-completed:active {
 }
 
 
-.today::before {
+.cal-today::before {
   background: #af2f2f6e;
 }
 
 
-.current::before {
+.cal-current::before {
   background: #2faf746e;
 }
 
 
-.presence::after {
+.cal-presence::after, .cal-completed::after  {
   content: "";
   position: absolute;
   width: 5px;
@@ -594,8 +594,18 @@ html .clear-completed:active {
   aspect-ratio: 1 / 1;
   transform: translate(300%, -100%);
   clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
-  background: #ff452d8a;
   z-index: -1;
+}
+
+
+.cal-presence::after {
+  background: #ff452d8a;
+}
+
+
+.cal-completed::after  {
+  background: #2faf746e; !important;
+
 }
 
 
