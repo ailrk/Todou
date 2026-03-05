@@ -120,15 +120,16 @@ function renderCalendar(model) {
             return "";
     }
     function presence(i) {
-        if (model.firstDay === "")
-            return "";
         // immediately set current non-mempty todo as presence
         if (model.calendar.year === date.getFullYear() &&
             model.calendar.month === date.getMonth() &&
-            i === date.getDate() &&
-            model.entries.length > 0) {
-            return "presence";
+            i === date.getDate()) {
+            if (model.entries.length > 0) {
+                return "presence";
+            }
         }
+        if (model.firstDay === "")
+            return "";
         let cday = new Date(fmtYMD(model.calendar) + "T00:00:00");
         let fday = new Date(model.firstDay + "T00:00:00"); // use local time
         cday.setDate(i);
@@ -225,7 +226,6 @@ async function editingEntry(model, id, isEditing) {
     }
 }
 function updateEntry(model, id, task) {
-    console.log('update');
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.description = task;
@@ -275,21 +275,17 @@ function toggleCalendar(model, show) {
         const date = new Date(model.date + "T00:00:00");
         model.calendar.year = date.getFullYear();
         model.calendar.month = date.getMonth();
-        console.log('1', document.activeElement);
         const app = document.querySelector('body');
         if (app !== null) {
             app.focus();
         }
-        console.log('2', document.activeElement);
     }
     vdom.render();
     if (model.showCalendar) {
-        console.log('3', document.activeElement);
         const el = document.querySelector('.calendar-modal');
         if (el !== null) {
             el.focus();
         }
-        console.log('4', document.activeElement);
     }
 }
 function nextCalendar(model) {
@@ -305,14 +301,12 @@ function prevCalendar(model) {
     vdom.render();
 }
 function nextDay(model) {
-    console.log('nd');
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() + 1);
     const formatted = d.toISOString().split('T')[0];
     window.location.href = `/${formatted}`;
 }
 function prevDay(model) {
-    console.log('pd');
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() - 1);
     const formatted = d.toISOString().split('T')[0];

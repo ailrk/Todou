@@ -255,15 +255,17 @@ function renderCalendar(model: Model) {
   }
 
   function presence(i: number) {
-    if (model.firstDay === "") return "";
-
     // immediately set current non-mempty todo as presence
     if (model.calendar.year === date.getFullYear() &&
       model.calendar.month === date.getMonth() &&
-      i === date.getDate() &&
-      model.entries.length > 0) {
-      return "presence"
+      i === date.getDate()) {
+      if (model.entries.length > 0) {
+        return "presence";
+      }
     }
+
+    if (model.firstDay === "") return "";
+
     let cday = new Date(fmtYMD(model.calendar) + "T00:00:00");
     let fday = new Date(model.firstDay + "T00:00:00"); // use local time
     cday.setDate(i);
@@ -387,7 +389,6 @@ async function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
 
 
 function updateEntry(model: Model, id: EntryId, task: string) {
-  console.log('update')
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.description = task;
@@ -450,23 +451,19 @@ function toggleCalendar(model: Model, show?: boolean) {
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
 
-    console.log('1', document.activeElement)
     const app = document.querySelector('body');
     if (app !== null) {
       (app as HTMLElement).focus();
     }
-    console.log('2', document.activeElement)
   }
 
   vdom.render();
 
   if (model.showCalendar) {
-    console.log('3', document.activeElement)
     const el = document.querySelector('.calendar-modal');
     if (el !== null) {
       (el as HTMLElement).focus();
     }
-    console.log('4', document.activeElement)
   }
 }
 
@@ -488,7 +485,6 @@ function prevCalendar(model: Model) {
 
 
 function nextDay(model: Model) {
-  console.log('nd')
   const d = new Date(model.date + "T00:00:00");
   d.setDate(d.getDate() + 1);
   const formatted = d.toISOString().split('T')[0];
@@ -497,7 +493,6 @@ function nextDay(model: Model) {
 
 
 function prevDay(model: Model) {
-  console.log('pd')
   const d = new Date(model.date + "T00:00:00");
   d.setDate(d.getDate() - 1);
   const formatted = d.toISOString().split('T')[0];
@@ -679,8 +674,6 @@ if ('serviceWorker' in navigator && window.top === window.self) {
 /*
  * Main
  */
-
-
 
 
 async function main() {
