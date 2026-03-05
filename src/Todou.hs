@@ -33,9 +33,8 @@ import Data.Functor ((<&>))
 import Data.List (stripPrefix, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
 import Data.String.Interpolate (iii, i)
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -69,6 +68,10 @@ import Web.Cookie (parseCookies)
 import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
 import Codec.Compression.Zlib qualified as Zlib
+import Data.Bifunctor (Bifunctor(..))
+import Debug.Trace (traceShowId, traceShow)
+import Data.ByteString.Builder qualified as Builder
+import Data.Word (Word8)
 
 
 ----------------------------------------
@@ -665,38 +668,65 @@ flushOnDirty handle todo@(Todo { entries, date }) = do
       void . Amazonka.runResourceT $ Amazonka.send env req
 
 
+-- | A presence map is a fixed size bitset. The size of the bitset is
+-- propotional to the total days between the first and last recorded day
+-- day with a todo record.
+-- Each day corresponds to 2 bits
+--  - m & 1        : whether the day is present
+--  - m & (1 << 1) : whether all enties is completed
+--
+-- A byte can reside 4 such units, each unit is called a segment. This bit
+-- set structure need to be unpacked by the frontend.
 getPresences :: Buffer -> IO (Maybe (ByteString, Day))
 getPresences buffer@Buffer { todos } =
   case getBufferDayRange buffer of
-    Nothing -> pure Nothing
+    Nothing         -> pure Nothing
     Just (from, to) -> do
-      let isPresent d = Set.member d
-            . Set.fromList
-            . fmap fst
-            . filter (\(_, v) -> isJust (cleanup v))
+      let cleanup (d, mTodo) = case mTodo of
+                                 Just (Todo { entries = []} ) -> Nothing
+                                 Nothing                      -> Nothing
+                                 other                        -> Just (d, other)
+          collect = \mTodo -> case mTodo of
+                                Just (Todo { entries }) ->
+                                  [ all (.completed) entries -- completed
+                                  ]
+                                Nothing -> []
+          summary = -- a map from Day to bools.
+            Map.fromList
+            . fmap (second collect)
+            . mconcat
+            . fmap maybeToList
+            . fmap cleanup
             $ Map.toList todos
-      let bytes = daysToBytes isPresent from to
+
+      let bytes = daysToBytes summary from to
       pure (Just (bytes, from))
   where
-    cleanup = \case
-      Just (Todo { entries = []} ) -> Nothing
-      Nothing -> Nothing
-      other -> other
+    bitsPerDay = 2 -- this is the total bits per day.
 
+    daysToBytes :: Map Day [Bool] -> Day -> Day -> ByteString
+    daysToBytes summary start end = fst (ByteString.unfoldrN nBytes go start) & \s -> traceShow "-->" $ traceShow (Builder.toLazyByteString . Builder.byteStringHex $ s) s
+      where
+        totalDays = fromIntegral (diffDays end start + 1)
+        nBytes    = ((bitsPerDay * totalDays) + 7) `div` 8
+        go d
+          | d > end   = Nothing
+          | otherwise = Just (packOneByte d 0 0)
 
-daysToBytes :: (Day -> Bool) -> Day -> Day -> ByteString
-daysToBytes isPresent start end = fst (ByteString.unfoldrN nBytes go start)
-  where
-    totalDays = fromIntegral (diffDays end start + 1)
-    nBytes    = (totalDays + 7) `div` 8
-    go c
-      | c > end = Nothing
-      | otherwise = Just (pack8Bits c 0 0)
-
-    pack8Bits d idx acc
-      | idx == 8 || d > end = (acc, d)
-      | isPresent d         = pack8Bits (addDays 1 d) (idx + 1) (setBit acc idx)
-      | otherwise           = pack8Bits (addDays 1 d) (idx + 1) acc
+        packOneByte d idx acc
+          | idx >= 8 || d > end = (acc, d)
+          | otherwise           = case Map.lookup d summary of
+                                    -- day presents, set presence bits
+                                    Just flags -> packOneByte (addDays 1 d) (idx + bitsPerDay)
+                                                $ let setOn True c  = flip (setBit @Word8) c
+                                                      setOn False _ = id
+                                                   in case flags of
+                                                        (completed:_) ->
+                                                          setOn completed (idx + 1)    -- bit 1
+                                                          $ setBit acc idx             -- bit 0
+                                                        _ -> error "invalid flag format"
+                                    -- skip
+                                    Nothing -> packOneByte (addDays 1 d) (idx + bitsPerDay) acc
 
 
 ----------------------------------------

@@ -35,7 +35,7 @@ interface Model {
   visibility: Visibility;
   field: string;
   showCalendar: boolean;
-  presence: BitSetView;
+  presence: PresenceView;
   calendar: YMD;
 }
 
@@ -240,7 +240,7 @@ function renderCalendar(model: Model) {
     if (model.calendar.year === now.getFullYear() &&
       model.calendar.month === now.getMonth() &&
       i === now.getDate())
-      return "today"
+      return " cal-today"
     else
       return ""
   }
@@ -249,7 +249,7 @@ function renderCalendar(model: Model) {
     if (model.calendar.year === date.getFullYear() &&
       model.calendar.month === date.getMonth() &&
       date.getDate() === i)
-      return "current"
+      return " cal-current"
     else
       return ""
   }
@@ -260,7 +260,10 @@ function renderCalendar(model: Model) {
       model.calendar.month === date.getMonth() &&
       i === date.getDate()) {
       if (model.entries.length > 0) {
-        return "presence";
+        if (model.entries.every((e) => e.completed)) {
+          return " cal-completed";
+        }
+        return " cal-presence";
       }
     }
 
@@ -275,11 +278,22 @@ function renderCalendar(model: Model) {
     if (Number.isNaN(diff)) {
       return "";
     }
+
+    // build from presence map
     let delta = Math.trunc(diff / (1000 * 60 * 60 * 24));
-    if (model.presence.has(delta)) {
-        return "presence";
+    let result = "";
+
+    if (model.presence.hasDay(delta)) {
+      console.log("hasDay");
+      result += " cal-presence";
     }
-    return "";
+
+    if (model.presence.completed(delta)) {
+      console.log("completed");
+      result += " cal-completed";
+    }
+
+    return result;
   }
 
   return (
@@ -589,10 +603,10 @@ function getDateFromPath(defaultDate = new Date()) {
 }
 
 
-async function base64ToBitSet(b64: string): Promise<BitSetView> {
+async function base64ToBitSet(b64: string): Promise<PresenceView> {
   const blob = await fetch(`data:application/octet-stream;base64,${b64}`).then(r => r.blob());
   const bytes = await zlibDecompress(blob);
-  return new BitSetView(bytes);
+  return new PresenceView(bytes);
 }
 
 
@@ -617,44 +631,70 @@ function fmtYMD(ymd: YMD): string {
 
 /* Data */
 
-class BitSetView {
-  words: Uint8Array;
+// nBits per segment. A segment holds all the flags for a day.
+// This number depends on the presence map format from the backend.
+const NBITS              = 2|0;
+
+// Number of segments per byte
+const NSEGS              = 8/NBITS|0
+
+{/* // Shift n on segment index to get the bit index. */}
+{/* const SEGIDX             = Math.log(NSEGS)|0; */}
+
+const PRESENCE_DAY       = 0;
+
+const PRESENCE_COMPLETED = 1;
+
+
+
+class PresenceView {
+  bytes: Uint8Array;
 
   constructor(input: ArrayBufferLike | ArrayBufferView) {
+    // PresenceView takes the owndership of the buffer.
+    // If we get a view, we copy the view into a new buffer. Otherwise we simply
+    // take it.
     if (ArrayBuffer.isView(input)) {
-      this.words = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+      this.bytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
     } else {
-      this.words = new Uint8Array(input);
+      this.bytes= new Uint8Array(input);
     }
+
   }
 
-  add(i: number) {
-    this.words[i >> 3] |= (1 << (i & 7));
+  // @i: the number of segment. represents day
+  seg(i: number) {
+    if (NBITS < 0 && (NBITS & NBITS - 1) !== 0) {
+      console.error("seg size must be positive and power of 2");
+    }
+
+    const mask = (1 << NBITS) - 1;
+    return (this.bytes[Math.floor(i / NSEGS)] >> (NBITS * (i % NSEGS))) & mask;
   }
 
-  remove(i: number) {
-    this.words[i >> 3] &= ~(1 << (i & 7));
+  hasDay(i: number) {
+    return (this.seg(i) >> PRESENCE_DAY) & 1;
   }
 
-  has(i: number) {
-    return (this.words[i >> 3] & (1 << (i & 7))) !== 0;
+  completed(i: number) {
+    return (this.seg(i) >> PRESENCE_COMPLETED) & 1;
   }
 
-  toggle(i: number) {
-    this.words[i >> 3] ^= i << (i & 7);
-  }
+  dump() { // dump as binary string
+    function byteToHex(byte: number) {
+      // Ensure the byte value is treated as an unsigned 8-bit integer (0-255)
+      // which is useful if the input might be a signed number.
+      const unsignedByte = byte & 0xFF;
 
-  toString(): string { // dump as binary string
-    return Array.from(this.words)
-      .map(word => {
-        return (word >>> 0) // Treat as unsigned
-          .toString(2)
-          .padStart(32, '0')
-          .split('')
-          .reverse()
-          .join('');
-      })
-      .join('');
+      // Convert the number to a base-16 string.
+      const hex = unsignedByte.toString(16);
+
+      // Pad with a leading '0' and take the last two characters to ensure
+      // a consistent 2-character output (e.g., 5 becomes "05").
+      return hex.padStart(2, '0');
+    }
+
+    this.bytes.forEach(b => console.log(byteToHex(b)))
   }
 }
 
