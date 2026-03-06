@@ -30,10 +30,10 @@ import Data.Coerce (coerce)
 import Data.FileEmbed qualified as FileEmbed
 import Data.Function ((&), fix)
 import Data.Functor ((<&>))
-import Data.List (stripPrefix, sort)
+import Data.List (stripPrefix, sort, foldl', scanl')
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, mapMaybe, maybeToList, catMaybes)
 import Data.String.Interpolate (iii, i)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -48,7 +48,7 @@ import Data.Time
       getCurrentTime,
       utcToLocalTime,
       utc,
-      LocalTime(..), addDays, diffDays, fromGregorian )
+      LocalTime(..), addDays, diffDays, fromGregorian, Year)
 import Database.SQLite.Simple (ToRow(..), FromRow(..), Only (..), type (:.) ((:.)), Query (..))
 import Database.SQLite.Simple qualified as Sqlite
 import Database.SQLite.Simple.FromField (FromField(..))
@@ -70,6 +70,8 @@ import Data.ByteString.Base64 qualified as B64
 import Codec.Compression.Zlib qualified as Zlib
 import Data.Bifunctor (Bifunctor(..))
 import Data.Word (Word8)
+import Data.Time.Calendar.Month (Month, pattern MonthDay, pattern YearMonth)
+import Data.Time.Calendar (pattern YearMonthDay, gregorianMonthLength)
 
 
 ----------------------------------------
@@ -82,7 +84,7 @@ flushPeriod = 5 * 1000000
 
 
 ----------------------------------------
--- Domain
+-- Domain.Todo
 ----------------------------------------
 
 -- A Todou is a list of Todos. A Todo is a list of entries.
@@ -209,6 +211,58 @@ getBufferDayRange Buffer { todos } =
     ks -> pure (head ks, last ks)
 
 
+
+----------------------------------------
+-- Domain.Stat
+----------------------------------------
+
+
+data CumulativeFlowRange
+  = CFRYear Year
+  | CFRMonth Month
+  | CFRDay Day
+  | CFRAll
+  deriving (Show, Eq)
+
+
+data CumulativeFlow = CumulativeFlow
+  { completed  :: Int
+  , ongoing    :: Int
+  }
+
+
+cfrToDayRange ::  CumulativeFlowRange -> Map Day (Maybe Todo) -> (Day, Day)
+cfrToDayRange r todos =
+  case r of
+    CFRYear year ->
+      (YearMonthDay year 1 1, YearMonthDay year 12 31)
+    CFRMonth month ->
+      let YearMonth year monthOfYear = month
+       in ( MonthDay month 1, MonthDay month (gregorianMonthLength year monthOfYear))
+    CFRDay day -> (day, day)
+    CFRAll ->
+      let (k1, _) = Map.findMin todos
+          (k2, _) = Map.findMax todos
+       in (k1, k2)
+
+
+createCumulativeFlow :: CumulativeFlowRange -> Map Day (Maybe Todo) -> [CumulativeFlow]
+createCumulativeFlow r todos =
+  let
+      (start, end) = cfrToDayRange r todos
+      range        = catMaybes $ rangeQuery start end todos
+      acc          = CumulativeFlow { completed = 0
+                                    , ongoing   = 0
+                                    }
+   in scanl'
+        (\b (Todo { entries }) ->
+          let completed = b.completed + length (filter (.completed) entries)
+            in b { completed = completed
+                 , ongoing   = length entries - completed
+                 })
+        acc range
+
+
 ----------------------------------------
 -- Parsing
 ----------------------------------------
@@ -327,7 +381,7 @@ dumpEntry (Entry { entryId = EntryId entryId, description, completed }) =
 
 
 ----------------------------------------
--- Domain.Sqlite3
+-- Storage.Sqlite3
 ----------------------------------------
 
 
@@ -367,7 +421,7 @@ createSqliteSchema conn = do
 
 
 ----------------------------------------
--- Domain.S3
+-- Storage.S3
 ----------------------------------------
 
 
@@ -1022,7 +1076,7 @@ server Options { port } handle = scotty port do
 
 
 ----------------------------------------
--- Extended
+-- Scotty.Extended
 ----------------------------------------
 
 
@@ -1034,6 +1088,18 @@ queryFlag name = do
     Just "true" -> True
     Just "1"    -> True
     _           -> False
+
+
+----------------------------------------
+-- Helper
+----------------------------------------
+
+
+rangeQuery :: (Ord k, Enum k) => k -> k -> Map k a -> [a]
+rangeQuery s1 s2 m =
+  let (_, afterS1) = Map.split (pred s1) m
+      (inRange, _) = Map.split (succ s2) afterS1
+   in Map.elems inRange
 
 
 ----------------------------------------
