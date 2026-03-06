@@ -69,8 +69,9 @@ import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
 import Codec.Compression.Zlib qualified as Zlib
 import Data.Bifunctor (Bifunctor(..))
-import Debug.Trace (traceShowId, traceShow)
+import Debug.Trace (traceShow)
 import Data.ByteString.Builder qualified as Builder
+import Data.Word (Word8)
 
 
 ----------------------------------------
@@ -712,20 +713,20 @@ getPresences buffer@Buffer { todos } =
           | d > end   = Nothing
           | otherwise = Just (packOneByte d 0 0)
 
-        setDayBits idx flags acc =
-          case flags of
-            (completed:_) ->
-              (if completed then (flip setBit (idx + 1)) else id) -- bit 1
-              . flip setBit idx                                   -- bit 0
-              $ acc
-            [] -> setBit acc idx
-
         packOneByte d idx acc
           | idx >= 8 || d > end = (acc, d)
-          | otherwise           = let flags = Map.findWithDefault [] d summary
-                                   in packOneByte (addDays 1 d) (idx + bitsPerDay)
-                                    $ setDayBits idx flags acc
-
+          | otherwise           = case Map.lookup d summary of
+                                    -- day presents, set presence bits
+                                    Just flags -> packOneByte (addDays 1 d) (idx + bitsPerDay)
+                                                $ let setOn True c  = flip (setBit @Word8) c
+                                                      setOn False _ = id
+                                                   in case flags of
+                                                        (completed:_) ->
+                                                          setOn completed (idx + 1)    -- bit 1
+                                                          $ setBit acc idx             -- bit 0
+                                                        _ -> error "invalid flag format"
+                                    -- skip
+                                    Nothing -> packOneByte (addDays 1 d) (idx + bitsPerDay) acc
 
 
 ----------------------------------------

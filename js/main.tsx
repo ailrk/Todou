@@ -260,6 +260,9 @@ function renderCalendar(model: Model) {
       model.calendar.month === date.getMonth() &&
       i === date.getDate()) {
       if (model.entries.length > 0) {
+        if (model.entries.every((e) => e.completed)) {
+          return " cal-completed";
+        }
         return " cal-presence";
       }
     }
@@ -281,10 +284,12 @@ function renderCalendar(model: Model) {
     let result = "";
 
     if (model.presence.hasDay(delta)) {
+      console.log("hasDay");
       result += " cal-presence";
     }
 
     if (model.presence.completed(delta)) {
+      console.log("completed");
       result += " cal-completed";
     }
 
@@ -628,18 +633,14 @@ function fmtYMD(ymd: YMD): string {
 
 // nBits per segment. A segment holds all the flags for a day.
 // This number depends on the presence map format from the backend.
-const NBITS              = 2;
+const NBITS              = 2|0;
 
 // Number of segments per byte
-const NSEGS              = 8/NBITS
-
-{/* // Shift n on segment index to get the bit index. */}
-{/* const SEGIDX             = Math.log(NSEGS)|0; */}
+const NSEGS              = 8/NBITS|0
 
 const PRESENCE_DAY       = 0;
 
 const PRESENCE_COMPLETED = 1;
-
 
 
 class PresenceView {
@@ -662,7 +663,9 @@ class PresenceView {
     if (NBITS < 0 && (NBITS & NBITS - 1) !== 0) {
       console.error("seg size must be positive and power of 2");
     }
-    return (this.bytes[Math.trunc(i / NSEGS)] >> (NBITS * (i % NSEGS))) & (2 ^ (NBITS - 1));
+
+    const mask = (1 << NBITS) - 1;
+    return (this.bytes[Math.floor(i / NSEGS)] >> (NBITS * (i % NSEGS))) & mask;
   }
 
   hasDay(i: number) {

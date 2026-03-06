@@ -125,6 +125,12 @@ function renderCalendar(model) {
             model.calendar.month === date.getMonth() &&
             i === date.getDate()) {
             if (model.entries.length > 0) {
+<<<<<<< HEAD
+=======
+                if (model.entries.every((e) => e.completed)) {
+                    return " cal-completed";
+                }
+>>>>>>> refs/remotes/origin/master
                 return " cal-presence";
             }
         }
@@ -143,9 +149,17 @@ function renderCalendar(model) {
         let delta = Math.trunc(diff / (1000 * 60 * 60 * 24));
         let result = "";
         if (model.presence.hasDay(delta)) {
+<<<<<<< HEAD
             result += " cal-presence";
         }
         if (model.presence.completed(delta)) {
+=======
+            console.log("hasDay");
+            result += " cal-presence";
+        }
+        if (model.presence.completed(delta)) {
+            console.log("completed");
+>>>>>>> refs/remotes/origin/master
             result += " cal-completed";
         }
         return result;
@@ -406,9 +420,15 @@ function fmtYMD(ymd) {
 /* Data */
 // nBits per segment. A segment holds all the flags for a day.
 // This number depends on the presence map format from the backend.
+<<<<<<< HEAD
 const NBITS = 2;
 // Number of segments per byte
 const NSEGS = 8 / NBITS;
+=======
+const NBITS = 2 | 0;
+// Number of segments per byte
+const NSEGS = 8 / NBITS | 0;
+>>>>>>> refs/remotes/origin/master
 { /* // Shift n on segment index to get the bit index. */ }
 { /* const SEGIDX             = Math.log(NSEGS)|0; */ }
 const PRESENCE_DAY = 0;
@@ -431,7 +451,12 @@ class PresenceView {
         if (NBITS < 0 && (NBITS & NBITS - 1) !== 0) {
             console.error("seg size must be positive and power of 2");
         }
+<<<<<<< HEAD
         return (this.bytes[Math.trunc(i / NSEGS)] >> (NBITS * (i % NSEGS))) & (2 ^ (NBITS - 1));
+=======
+        const mask = (1 << NBITS) - 1;
+        return (this.bytes[Math.floor(i / NSEGS)] >> (NBITS * (i % NSEGS))) & mask;
+>>>>>>> refs/remotes/origin/master
     }
     hasDay(i) {
         return (this.seg(i) >> PRESENCE_DAY) & 1;
