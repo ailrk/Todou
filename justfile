@@ -47,6 +47,11 @@ watch:
   ghcid -c "cabal repl todou" -s ":set args --storage=sqlite::memory: --port=5555"  -T "Todou.main" -W
 
 
+watch1:
+  ghcid -c "cabal repl todou" -s ":set args --storage=dir:_cache --port=5555"  -T "Todou.main" -W
+
+
+
 tags:
   mkdir -p tags
   cd tags && \

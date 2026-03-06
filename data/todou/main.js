@@ -5,11 +5,12 @@ import { newVdom, h } from "./vdom.js";
  */
 function renderTodou(model) {
     return (h("div", { class: "todou-container", tabindex: "-1" },
-        h("nav", { onclick: (_) => { toggleCalendar(model); } },
-            h("span", null,
+        h("nav", null,
+            h("span", { onclick: (_) => { toggleCalendar(model); } },
                 " ",
                 model.date,
-                " ")),
+                " "),
+            h("span", { class: "stat-icon" })),
         h("section", { class: "todoapp" },
             renderInput(model),
             renderEntries(model),

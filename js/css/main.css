@@ -67,12 +67,15 @@ button, a {
 
 
 nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 20px 10px 20px 10px;
   gap: 1em;
   margin: 0 10px 0 10px;
-  cursor: pointer;
   -webkit-font-smoothing: antialiased;
 }
+
 
 
 nav span {
@@ -81,6 +84,7 @@ nav span {
   color: #af2f2f6e;
   margin: 0; /* remove default margin for flex alignment */
   padding-top: 1px;
+  cursor: pointer;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -96,8 +100,27 @@ nav span::before {
   background-repeat: no-repeat;
   background-position: center;
   content: '';
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 50%;
+  border: 2px solid transparent;
 }
 
+
+nav span:hover::before{
+	border-color: rgba(175, 47, 47, 0.1);
+}
+
+nav .stat-icon::before {
+  background-image: url('stat.svg');
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+
+nav .stat-icon:hover::before {
+	border-color: rgba(175, 47, 47, 0.1);
+}
 
 .todoapp {
 	background: #fff;

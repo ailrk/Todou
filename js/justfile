@@ -2,7 +2,7 @@ build:
     #!/usr/bin/env bash
     tsc
     cp ./css/* ./dist
-    cp ./svg/* ./dist
+    cp ./img/* ./dist
     cp ./icons/* ./dist
     cp manifest.json ./dist
     git rev-parse --short HEAD > rev && cp rev ./dist

@@ -48,8 +48,9 @@ interface Model {
 function renderTodou(model: Model): VNode {
   return (
     <div class="todou-container" tabindex="-1">
-      <nav onclick={(_: MouseEvent) => { toggleCalendar(model); }} >
-        <span> {model.date} </span>
+      <nav>
+        <span onclick={(_: MouseEvent) => { toggleCalendar(model); }}> {model.date} </span>
+        <span class="stat-icon"></span>
       </nav>
       <section class="todoapp">
         {renderInput(model)}
