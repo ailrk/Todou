@@ -560,7 +560,7 @@ html .clear-completed:active {
 }
 
 
-.cal-today, .cal-current {
+.cal-today  {
   color: white;
 }
 
@@ -582,7 +582,7 @@ html .clear-completed:active {
 
 
 .cal-current::before {
-  background: #2faf746e;
+  border: 2px solid #af2f2f6e
 }
 
 
@@ -593,7 +593,6 @@ html .clear-completed:active {
   display: block;
   aspect-ratio: 1 / 1;
   transform: translate(300%, -100%);
-  clip-path: polygon(100% 0%, 0% 100%, 100% 100%);
   z-index: -1;
 }
 
@@ -604,7 +603,7 @@ html .clear-completed:active {
 
 
 .cal-completed::after  {
-  background: #2faf746e; !important;
+  background: #2faf74de; !important;
 
 }
 

@@ -69,8 +69,6 @@ import Data.Bits (Bits(..))
 import Data.ByteString.Base64 qualified as B64
 import Codec.Compression.Zlib qualified as Zlib
 import Data.Bifunctor (Bifunctor(..))
-import Debug.Trace (traceShow)
-import Data.ByteString.Builder qualified as Builder
 import Data.Word (Word8)
 
 
@@ -705,7 +703,7 @@ getPresences buffer@Buffer { todos } =
     bitsPerDay = 2 -- this is the total bits per day.
 
     daysToBytes :: Map Day [Bool] -> Day -> Day -> ByteString
-    daysToBytes summary start end = fst (ByteString.unfoldrN nBytes go start) & \s -> traceShow "-->" $ traceShow (Builder.toLazyByteString . Builder.byteStringHex $ s) s
+    daysToBytes summary start end = fst (ByteString.unfoldrN nBytes go start)
       where
         totalDays = fromIntegral (diffDays end start + 1)
         nBytes    = ((bitsPerDay * totalDays) + 7) `div` 8

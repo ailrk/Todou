@@ -280,16 +280,15 @@ function renderCalendar(model: Model) {
     }
 
     // build from presence map
-    let delta = Math.trunc(diff / (1000 * 60 * 60 * 24));
+    let delta = Math.round(diff / (1000 * 60 * 60 * 24));
     let result = "";
 
+    console.log("delta", delta, diff, cday, fday)
     if (model.presence.hasDay(delta)) {
-      console.log("hasDay");
       result += " cal-presence";
     }
 
     if (model.presence.completed(delta)) {
-      console.log("completed");
       result += " cal-completed";
     }
 
@@ -658,7 +657,7 @@ class PresenceView {
 
   }
 
-  // @i: the number of segment. represents day
+  // @i: the number of segment. 0 indexed, represents day
   seg(i: number) {
     if (NBITS < 0 && (NBITS & NBITS - 1) !== 0) {
       console.error("seg size must be positive and power of 2");
