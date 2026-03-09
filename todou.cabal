@@ -66,7 +66,12 @@ common options
 library
     import: extensions, options
     exposed-modules:
-      Todou
+      Todou.Domain.Stat
+      Todou.Domain.Todo
+      Todou.Main
+      Todou.Option
+      Todou.Server
+      Todou.Store
     -- other-modules:
     -- other-extensions:
     build-depends:

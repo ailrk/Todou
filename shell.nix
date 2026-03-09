@@ -9,6 +9,7 @@ hspkgs.shellFor {
     hspkgs.ghcprofview
     hspkgs.eventlog2html
     hspkgs.fast-tags
+    hspkgs.graphmod
     pkgs.ghcid
     pkgs.bashInteractive
     pkgs.upx

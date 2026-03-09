@@ -10,9 +10,11 @@ type Visibility = "All" | "Completed" | "Active";
 interface Entry {
   id: EntryId;
   description: string;
-  completed: boolean;
+  completedDate: string | null;
   editing: boolean;
 }
+
+function isCompleted(e: Entry): boolean { return e.completedDate !== null; }
 
 
 interface YMD {
@@ -50,7 +52,10 @@ function renderTodou(model: Model): VNode {
     <div class="todou-container" tabindex="-1">
       <nav>
         <span onclick={(_: MouseEvent) => { toggleCalendar(model); }}> {model.date} </span>
-        <span class="stat-icon"></span>
+        <span
+          class="stat-icon"
+          onclick={(_: MouseEvent) => { window.location.href = `/stat?date=${model.date}`; }}
+        ></span>
       </nav>
       <section class="todoapp">
         {renderInput(model)}
@@ -90,15 +95,15 @@ function renderInput(model: Model): VNode {
 function renderEntries(model: Model): VNode {
   const { visibility, entries } = model;
   const allCompleted = entries.reduce(
-    (completed, entry) => entry.completed && completed,
+    (completed, entry) => isCompleted(entry) && completed,
     false
   );
   const cssVisibility = entries.length === 0 ? "hidden" : "visible";
 
   const isVisible = (entry: Entry) => {
     switch (visibility) {
-      case "Completed": return entry.completed;
-      case "Active": return !entry.completed;
+      case "Completed": return isCompleted(entry);
+      case "Active": return isCompleted(entry);
       default: return true;
     }
   };
@@ -122,7 +127,7 @@ function renderEntries(model: Model): VNode {
 
 function renderControls(model: Model): VNode {
   const { visibility, entries } = model;
-  const entriesCompleted = entries.filter(e => e.completed).length;
+  const entriesCompleted = entries.filter(isCompleted).length;
   const entriesLeft = entries.length - entriesCompleted;
 
   return (
@@ -190,7 +195,7 @@ function renderFooterInfo(): VNode {
 
 function renderEntry(model: Model, entry: Entry): VNode {
   const classes = [
-    entry.completed ? "completed" : "",
+    isCompleted(entry) ? "completed" : "",
     entry.editing ? "editing" : ""
   ].filter(Boolean).join(" ");
 
@@ -200,8 +205,12 @@ function renderEntry(model: Model, entry: Entry): VNode {
         <input
           class="toggle"
           type="checkbox"
-          checked={entry.completed}
-          onclick={() => checkEntry(model, entry.id, !entry.completed)} />
+          checked={isCompleted(entry)}
+          onclick={() => {
+            let formatted   = new Date().toISOString().split('T')[0];
+            let completedDate = isCompleted(entry) ? null : formatted;
+            checkEntry(model, entry.id, completedDate)
+          }} />
         <label ondblclick={() => editingEntry(model, entry.id, true)}>{entry.description}</label>
 
         <button
@@ -261,7 +270,7 @@ function renderCalendar(model: Model) {
       model.calendar.month === date.getMonth() &&
       i === date.getDate()) {
       if (model.entries.length > 0) {
-        if (model.entries.every((e) => e.completed)) {
+        if (model.entries.every(isCompleted)) {
           return " cal-completed";
         }
         return " cal-presence";
@@ -284,7 +293,6 @@ function renderCalendar(model: Model) {
     let delta = Math.round(diff / (1000 * 60 * 60 * 24));
     let result = "";
 
-    console.log("delta", delta, diff, cday, fday)
     if (model.presence.hasDay(delta)) {
       result += " cal-presence";
     }
@@ -368,7 +376,7 @@ async function addEntry(model: Model) {
       id: model.nextId,
       description: model.field,
       editing: false,
-      completed: false
+      completedDate: null
     }
   await addEntryAPI(model.date, newEntry.id, newEntry.description);
   model.nextId++;
@@ -390,7 +398,7 @@ async function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
 
   entry.editing = isEditing;
   if (!isEditing) {
-    await updateEntryAPI(model.date, id, entry.completed, entry.description)
+    await updateEntryAPI(model.date, id, entry.completedDate, entry.description)
   }
 
   vdom.render();
@@ -421,26 +429,28 @@ async function deleteEntry(model: Model, id: EntryId) {
 
 async function deleteCompletedEntries(model: Model) {
   await deleteCompletedEntriesAPI(model.date);
-  model.entries = model.entries.filter(entry => !entry.completed);
+  model.entries = model.entries.filter((e) => !isCompleted(e));
   vdom.render();
 }
 
 
-async function checkEntry(model: Model, id: EntryId, isCompleted: boolean) {
-  await updateEntryAPI(model.date, id, isCompleted);
+async function checkEntry(model: Model, id: EntryId, completedDate: string | null) {
+  await updateEntryAPI(model.date, id, completedDate);
   model.entries.forEach(entry => {
     if (entry.id === id) {
-      entry.completed = isCompleted
+      entry.completedDate = completedDate
     }
   });
   vdom.render();
 }
 
 
-async function checkAllEntries(model: Model, isCompleted: boolean) {
-  await updateEntriesAPI(model.date, isCompleted);
+async function checkAllEntries(model: Model, allCompleted?: boolean) {
+  let formatted   = new Date().toISOString().split('T')[0];
+  let completedDate = allCompleted ? formatted : null;
+  await updateEntriesAPI(model.date, completedDate);
   model.entries.forEach(entry => {
-    entry.completed = isCompleted
+    entry.completedDate = completedDate
   });
   vdom.render();
 }
@@ -534,10 +544,10 @@ async function addEntryAPI(date: string, id: number, description: string) {
 }
 
 
-async function updateEntryAPI(date: string, id: number, completed?: boolean, description?: string) {
+async function updateEntryAPI(date: string, id: number, completedDate: string | null, description?: string) {
   const params = new URLSearchParams();
-  if (completed !== undefined) {
-    params.set("completed", String(completed))
+  if (completedDate !== null) {
+    params.set("completedDate", completedDate)
   }
 
   if (description !== undefined) {
@@ -552,10 +562,10 @@ async function updateEntryAPI(date: string, id: number, completed?: boolean, des
 }
 
 
-async function updateEntriesAPI(date: string, completed?: boolean, description?: string) {
+async function updateEntriesAPI(date: string, completedDate: string | null, description?: string) {
   const params = new URLSearchParams();
-  if (completed !== undefined) {
-    params.set("completed", String(completed))
+  if (completedDate !== null) {
+    params.set("completed", completedDate)
   }
 
   if (description !== undefined) {

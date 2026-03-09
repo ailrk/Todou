@@ -1,0 +1,365 @@
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
+module Todou.Server where
+-- Backend for Todou app
+
+import Control.Applicative (Alternative((<|>)))
+import Control.Concurrent (readMVar)
+import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO(..))
+import Data.Aeson (ToJSON(..), (.=))
+import Data.Aeson qualified as Aeson
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as ByteString
+import Data.ByteString.Char8 qualified as Char8
+import Data.FileEmbed qualified as FileEmbed
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe, isJust)
+import Data.String.Interpolate (iii)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
+import Data.Text.Lazy qualified as LText
+import Data.Time
+    ( Day,
+      defaultTimeLocale,
+      parseTimeM,
+      formatTime,
+      getCurrentTime,
+      utcToLocalTime,
+      utc,
+      LocalTime(..), fromGregorian)
+import Lucid (Html, head_, meta_, div_, link_, title_, body_, rel_, href_, httpEquiv_, content_, charset_, lang_, name_, html_, id_, script_, src_, type_, sizes_)
+import Lucid qualified
+import Network.HTTP.Types (status500)
+import Network.Wai.Middleware.RequestLogger (logStdout)
+import Text.Read (readMaybe)
+import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
+import Web.Cookie (parseCookies)
+import Data.Time.Calendar.Month (pattern YearMonth)
+import Todou.Domain.Stat (CFDMonth (..), CFR (..), createCumulativeFlow)
+import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer (..), pattern TodoLoaded, pattern TodoNotExists, pattern TodoNotLoaded, Model(..), updateTodo, deleteEntry, updateEntry, insertTodo, todoToModel)
+import Todou.Domain.Todo qualified as Todo
+import Todou.Option
+import Todou.Store (Handle, getBufferMVar, flush, getPresences, loadTodo, modifyBuffer)
+
+
+----------------------------------------
+-- Orphan
+----------------------------------------
+
+
+instance Parsable Day where
+  parseParam s =
+    case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (LText.unpack s) of
+      Just date -> Right date
+      Nothing   -> Left  "Invalid date format. expecting: %Y-%m-%d"
+
+
+instance Parsable EntryId where
+  parseParam s =
+    case readMaybe (Text.unpack . LText.toStrict $ s) of
+      Just n  -> Right (EntryId n)
+      Nothing -> Left "Invalid EntryId"
+
+
+----------------------------------------
+-- Server
+----------------------------------------
+
+
+newtype Ok a = Ok a
+
+
+instance ToJSON a => ToJSON (Ok a) where
+  toJSON (Ok a) =
+    Aeson.object
+      [ "ok"   .= True
+      , "data" .=  a
+      ]
+
+newtype Err a = Err a
+
+
+instance ToJSON a => ToJSON (Err a) where
+  toJSON (Err e) =
+    Aeson.object
+      [ "ok"  .= False
+      , "err" .= e
+      ]
+
+
+json', javascript, css, png, ico, svg, plain :: ByteString -> ActionM ()
+json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
+javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
+css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
+png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
+ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
+svg bytes        = setHeader "Content-Type" "image/svg+xml" >> (raw . ByteString.fromStrict $ bytes)
+plain bytes      = setHeader "Content-Type" "text/plain" >> (raw . ByteString.fromStrict $ bytes)
+
+
+todoView :: Todo.Model -> Html ()
+todoView model = do
+  html_ [ lang_ "en" ] do
+    head_ do
+      meta_ [ charset_ "UTF-8" ]
+      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" ]
+      meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
+      meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
+      link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
+      link_ [ rel_ "stylesheet", href_ "/main.css" ]
+      link_ [ rel_ "manifest", href_ "/manifest.json" ]
+      title_ "Todou"
+    body_ do
+      div_ [ id_ "app" ] mempty
+      script_ [ id_ "model" ] (Aeson.encode model)
+      script_ [ src_ "main.js", type_ "module" ] (mempty @Text)
+
+
+statView :: Model -> Html ()
+statView model = do
+  html_ [ lang_ "en" ] do
+    head_ do
+      meta_ [ charset_ "UTF-8" ]
+      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" ]
+      meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
+      meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
+      link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
+      link_ [ rel_ "stylesheet", href_ "/main.css" ]
+      link_ [ rel_ "manifest", href_ "/manifest.json" ]
+      title_ "Todou"
+    body_ do
+      div_ [ id_ "app" ] mempty
+      script_ [ id_ "model" ] (Aeson.encode @[String] [])
+      script_ [ src_ "stat.js", type_ "module" ] (mempty @Text)
+
+
+
+server :: Options -> Handle -> IO ()
+server Options { port } handle = scotty port do
+  middleware logStdout
+
+  get "/" do
+    mCookies <- header "Cookie"
+    let getTimezone = lookup "timezone" . parseCookies . Text.encodeUtf8 . LText.toStrict
+    liftIO $ print mCookies
+    case mCookies of
+      Just cookies
+        | Just tz <- getTimezone cookies -> do
+            now <- liftIO getCurrentTime
+            let timeZone  = fromMaybe utc (readMaybe (Char8.unpack tz))
+            let localTime = utcToLocalTime timeZone now
+            liftIO $ print timeZone
+            redirect ("/" <> LText.pack (formatTime defaultTimeLocale  "%Y-%m-%d" localTime.localDay))
+      _ -> do
+        html . Lucid.renderText $ do
+          html_ do
+            head_ do
+              script_ do
+                [iii| let timezone = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+                        .formatToParts(new Date())
+                        .find(part => part.type === 'timeZoneName')
+                        .value;
+                      document.cookie = "timezone=; path=/; max-age=0";
+                      document.cookie = `timezone=${timezone}; path=/; max-age=${7*24*60*60}`;
+                      window.location.href = "/"
+                    |]
+
+
+  -- render the todo data for one date.
+  get "/:date" do
+    date <- captureParam @Day "date"
+
+    when (date > fromGregorian 9999 12 31) do
+      redirect "/"
+
+    let bufferMvar = getBufferMVar handle
+
+    buffer <- liftIO do
+      flush handle -- flush on refresh
+      readMVar bufferMvar
+
+    (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
+      Just (p, d) -> pure (p, Text.pack (formatTime defaultTimeLocale "%Y-%m-%d" d))
+      Nothing -> pure ("", mempty)
+
+    eModel <- case Map.lookup date buffer.todos of
+      TodoLoaded todo -> do
+        pure (Right (todoToModel todo))
+      TodoNotLoaded -> do
+        liftIO (loadTodo handle date) >>= \case
+          Just todo -> pure (Right (todoToModel todo))
+          Nothing -> pure (Left "Can't find the todo data")
+      TodoNotExists -> do -- not in storage, create an empty one
+        let newTodo = Todo { entries = [], date = date, dirty = True }
+        pure (Right (todoToModel newTodo))
+
+    case eModel of
+      Right model -> do
+        html . Lucid.renderText
+        $ todoView model
+          { presenceMap = presenceMap
+          , firstDay    = firstDay
+          }
+      Left err -> do
+        status status500
+        text err
+
+
+  get "/stat" do
+    html . Lucid.renderText $ statView undefined
+
+
+  get "/cfd/:year/:month" do
+    year  <- captureParam @Integer "year"
+    monthOfYear <- captureParam @Int "month"
+
+    let month      = YearMonth year monthOfYear
+    let bufferMvar = getBufferMVar handle
+
+    buffer <- liftIO do
+      flush handle -- flush on refresh
+      readMVar bufferMvar
+
+    let cfd = CFDMonth (createCumulativeFlow (CFRMonth month) buffer.todos)
+
+    json cfd
+
+
+  get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
+  get "/stat.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/stat.js")
+  get "/sw.js"                        do javascript $(FileEmbed.embedFileRelative "data/todou/sw.js")
+  get "/vdom.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/vdom.js")
+  get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-192x192.png")
+  get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-512x512.png")
+  get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFileRelative "data/todou/apple-touch-icon.png")
+  get "/favicon.ico"                  do ico        $(FileEmbed.embedFileRelative "data/todou/favicon.ico")
+  get "/manifest.json"                do json'      $(FileEmbed.embedFileRelative "data/todou/manifest.json")
+  get "/main.css"                     do css        $(FileEmbed.embedFileRelative "data/todou/main.css")
+  get "/left-arrow.svg"               do svg        $(FileEmbed.embedFileRelative "data/todou/left-arrow.svg")
+  get "/right-arrow.svg"              do svg        $(FileEmbed.embedFileRelative "data/todou/right-arrow.svg")
+  get "/x.svg"                        do svg        $(FileEmbed.embedFileRelative "data/todou/x.svg")
+  get "/calendar.svg"                 do svg        $(FileEmbed.embedFileRelative "data/todou/calendar.svg")
+  get "/stat.svg"                     do svg        $(FileEmbed.embedFileRelative "data/todou/stat.svg")
+  get "/favicon.svg"                  do svg        $(FileEmbed.embedFileRelative "data/todou/favicon.svg")
+  get "/rev"                          do plain      $(FileEmbed.embedFileRelative "data/todou/rev")
+
+
+  -- add a new entry
+  post "/entry/add/:date/:id" do
+    date        <- captureParam @Day "date"
+    entryId     <- captureParam @EntryId "id"
+    description <- Text.decodeUtf8 . ByteString.toStrict <$> body
+    let newEntry =
+          Entry
+            { entryId       = entryId
+            , description   = description
+            , completedDate = Nothing
+            }
+    liftIO $ loadTodo handle date >>= \case
+      Just todo -> do -- update existing todo
+        let newTodo = todo
+              { entries = todo.entries <> [newEntry]
+              , dirty   = True
+              }
+        modifyBuffer handle (pure . updateTodo date (const newTodo))
+      Nothing -> do -- create new todo if necessary
+        let newTodo = Todo
+              { entries = [newEntry]
+              , date    = date, dirty = True
+              }
+        modifyBuffer handle (pure . insertTodo date newTodo)
+    json (Ok ())
+
+
+  -- update an entry
+  put "/entry/update/:date/:id" do
+    date         <- captureParam @Day "date"
+    mEntryId     <- captureParamMaybe @EntryId "id"
+    mCompletedAt <- queryParamMaybe @Day "completedDate"
+    mDescription <- queryParamMaybe @Text "description"
+    let toNewEntry e = e
+          { -- if completion date is in the past, force it to be completed in the same day
+            completedDate = fmap (max date) $ mCompletedAt <|> e.completedDate
+          , description   = fromMaybe e.description mDescription
+          }
+    case mEntryId of
+      Just entryId -> do
+        hasChecked <- liftIO $ loadTodo handle date >>= \case
+          Just _ -> do
+            modifyBuffer handle
+              $ pure
+              . updateTodo date (updateEntry entryId toNewEntry)
+            pure True
+          Nothing -> pure False
+        if hasChecked
+           then json (Ok ())
+           else json (Err @Text "todo data doesn't exist")
+      Nothing -> do
+        hasChecked <- liftIO $ loadTodo handle date >>= \case
+          Just _ -> do
+            modifyBuffer handle
+              (pure . updateTodo date (\todo -> todo { entries = fmap toNewEntry todo.entries } :: Todo))
+            pure True
+          Nothing -> pure False
+        if hasChecked
+           then json (Ok ())
+           else json (Err @Text "todo data doesn't exist")
+
+
+  -- delete an entry
+  delete "/entry/delete/:date/:id" do
+    date    <- captureParam @Day "date"
+    entryId <- captureParam @EntryId "id"
+    hasDeleted <- liftIO $ loadTodo handle date >>= \case
+      Just _ -> do
+        modifyBuffer handle (pure . updateTodo date (deleteEntry entryId))
+        pure True
+      Nothing -> pure False
+    if hasDeleted
+       then json (Ok ())
+       else json (Err @Text "can't find matching todo data")
+
+
+  -- delete completed entries
+  delete "/entry/delete/:date" do
+    date      <- captureParam @Day "date"
+    completed <- queryFlag "completed"
+    hasDeleted <- liftIO $ loadTodo handle date >>= \case
+      Just _
+        | completed -> do
+            modifyBuffer handle
+              (pure . updateTodo date (\todo -> todo { entries = filter (not . (isJust . (.completedDate))) todo.entries } :: Todo ))
+            pure True
+        | otherwise -> pure False
+      Nothing -> pure False
+    if hasDeleted
+       then json (Ok ())
+       else json (Err @Text "nothing is deleted")
+
+
+----------------------------------------
+-- Scotty.Extended
+----------------------------------------
+
+
+queryFlag :: LText.Text -> ActionM Bool
+queryFlag name = do
+  mVal <- queryParamMaybe name :: ActionM (Maybe Text)
+  pure $ case mVal of
+    Just ""     -> True
+    Just "true" -> True
+    Just "1"    -> True
+    _           -> False

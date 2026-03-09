@@ -5,6 +5,7 @@ build:
     cabal2nix . > default.nix
     just buildjs
     nix build
+    graphmod | dot -Tsvg -o modules.svg
 
 buildjs:
     #!/usr/bin/env bash
@@ -44,11 +45,11 @@ clean:
 
 
 watch:
-  ghcid -c "cabal repl todou" -s ":set args --storage=sqlite::memory: --port=5555"  -T "Todou.main" -W
+  ghcid -c "cabal repl todou" -s ":set args --storage=sqlite::memory: --port=5555"  -T "Todou.Main.main" -W
 
 
 watch1:
-  ghcid -c "cabal repl todou" -s ":set args --storage=dir:_cache --port=5555"  -T "Todou.main" -W
+  ghcid -c "cabal repl todou" -s ":set args --storage=dir:_cache --port=5555"  -T "Todou.Main.main" -W
 
 
 

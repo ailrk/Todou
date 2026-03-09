@@ -21,7 +21,8 @@ import Database.SQLite.Simple qualified as Sqlite
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 import Test.QuickCheck
-import Todou hiding (main)
+import Todou.Domain.Todo
+import Todou.Store
 
 
 main :: IO ()
@@ -37,13 +38,13 @@ pureTest = do
       trim "  hello  " `shouldBe` "hello"
 
     it "parses a valid Todo date" do
-      parseTodoDate "2023-12-25" `shouldBe` Just (fromGregorian 2023 12 25)
+      parseDate "2023-12-25" `shouldBe` Just (fromGregorian 2023 12 25)
 
     it "returns Nothing for invalid dates" do
-      parseTodoDate "not-a-date" `shouldBe` Nothing
+      parseDate "not-a-date" `shouldBe` Nothing
 
     it "ensures dumpEntry -> parseEntry is identity-ish" do
-      let entry = Entry (EntryId 5) "buy milk" True
+      let entry = Entry (EntryId 5) "buy milk" (Just (fromGregorian 2023 12 15))
       let dumped = dumpEntry entry
       parseEntry dumped `shouldBe` Just entry
 
@@ -54,7 +55,7 @@ pureTest = do
         in Aeson.decode (Aeson.encode eId) `shouldBe` Just eId
 
     it "round-trips an Entry" do
-      let entry = Entry (EntryId 1) "Buy groceries" False
+      let entry = Entry (EntryId 1) "Buy groceries" Nothing
       Aeson.decode (Aeson.encode entry) `shouldBe` Just entry
 
     it "sets 'dirty' to True when decoding a Todo" do
@@ -87,7 +88,7 @@ pureTest = do
 
     it "updateEntry: modifying an entry changes its value but keeps its ID" do
       let eid = EntryId 10
-      let entry = Entry eid "Original" False
+      let entry = Entry eid "Original" Nothing
       let todo = Todo [entry] (fromGregorian 2024 1 1) False
       let newDesc = "Updated Description"
 

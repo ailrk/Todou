@@ -1,7 +1,7 @@
 module Main where
 
 
-import Todou qualified
+import Todou.Main qualified
 
 main :: IO ()
-main = Todou.main
+main = Todou.Main.main
