@@ -41,15 +41,14 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
 import Web.Cookie (parseCookies)
-import Data.Time.Calendar.Month (pattern YearMonth, pattern MonthDay)
-import Todou.Domain.Stat (CFDMonth (..), CFR (..), createCumulativeFlow, createCFDMonth)
+import Data.Time.Calendar.Month (pattern MonthDay)
+import Todou.Domain.Stat (createCFDMonth)
 import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer (..), pattern TodoLoaded, pattern TodoNotExists, pattern TodoNotLoaded, Model(..), updateTodo, deleteEntry, updateEntry, insertTodo, todoToModel)
 import Todou.Domain.Todo qualified as Todo
 import Todou.Domain.Stat qualified as Stat
 import Todou.Option
 import Todou.Store (Handle, getBufferMVar, flush, getPresences, loadTodo, modifyBuffer)
 import Web.Scotty.Trans (ActionT)
-import Debug.Trace (traceShow, traceShowM)
 
 
 ----------------------------------------
@@ -279,22 +278,6 @@ server Options { port } handle = scotty port do
         html . Lucid.renderText $ trampoline "/stat"
 
 
-  get "/cfd/:year/:month" do
-    year        <- captureParam @Integer "year"
-    monthOfYear <- captureParam @Int "month"
-
-    let month      = YearMonth year monthOfYear
-        bufferMvar = getBufferMVar handle
-
-    buffer <- liftIO do
-      flush handle -- flush on refresh
-      readMVar bufferMvar
-
-    let cfd = CFDMonth (createCumulativeFlow (CFRMonth month) buffer.todos)
-
-    json cfd
-
-
   -- add a new entry
   post "/entry/add/:date/:id" do
     date        <- captureParam @Day "date"
@@ -317,7 +300,8 @@ server Options { port } handle = scotty port do
       Nothing -> do -- create new todo if necessary
         let newTodo = Todo
               { entries = [newEntry]
-              , date    = date, dirty = True
+              , date    = date
+              , dirty = True
               }
         modifyBuffer handle do
           pure . insertTodo date newTodo
@@ -332,7 +316,7 @@ server Options { port } handle = scotty port do
     mDescription <- queryParamMaybe @Text "description"
     let toNewEntry e = e
           { -- if completion date is in the past, force it to be completed in the same day
-            completedDate = mCompletedAt
+            completedDate = fmap (max date) mCompletedAt
           , description   = fromMaybe e.description mDescription
           }
     case mEntryId of
@@ -350,7 +334,9 @@ server Options { port } handle = scotty port do
       Nothing -> do
         hasChecked <- liftIO $ loadTodo handle date >>= \case
           Just _ -> do
-            let f todo = todo { entries = fmap toNewEntry todo.entries } :: Todo
+            let f todo = todo { entries = fmap toNewEntry todo.entries
+                              , dirty   = True
+                              } :: Todo
             modifyBuffer handle do
               pure . updateTodo date f
             pure True
@@ -383,6 +369,7 @@ server Options { port } handle = scotty port do
       Just _
         | completed -> do
             let f todo = todo { entries = filter (not . (isJust . (.completedDate))) todo.entries
+                              , dirty   = True
                               } :: Todo
             modifyBuffer handle (pure . updateTodo date f)
             pure True

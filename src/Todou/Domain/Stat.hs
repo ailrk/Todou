@@ -117,7 +117,6 @@ createCumulativeFlow r todos =
 
 -- | Prepare [CF] so there is no gap between days for a month. The result `CFDMonth` is ready
 -- for the frontend to render.
---
 createCFDMonth :: Month -> Map Day (Maybe Todo) -> CFDMonth
 createCFDMonth month todos =
   let cfd          = createCumulativeFlow (CFRMonth month) todos -- cfd is already sorted
@@ -128,8 +127,9 @@ createCFDMonth month todos =
                       in a' : go xs (y:ys) a'
         | x == date = y : go xs ys y
         | otherwise = go (x:xs) ys a -- ignore
+      go (x:xs) [] a = let a' = a { date = x } :: CF
+                        in a' : go xs [] a'
       go [] _ _ = []
-      go _ [] _ = []
    in CFDMonth $ go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
 
 

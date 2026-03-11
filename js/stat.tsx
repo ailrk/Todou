@@ -70,7 +70,8 @@ function renderCFDControls(): VNode {
 function renderCFD(): VNode {
   return (
     <section class="cfd-container">
-      <canvas id="cfd-canvas"></canvas>
+      <canvas id="cfd-canvas" style="z-index: 1;"></canvas>
+      <canvas id="cfd-canvas-crosshair" style="z-index: 2;"></canvas>
     </section>
   );
 }
@@ -124,7 +125,7 @@ async function drawCFD(model: Model) {
   // "w" and "h" are the logical CSS pixels
   const w = rect.width;
   const h = rect.height;
-  const padding = 20;
+  const padding = 25;
 
   const maxVal = Math.max(...model.cfd.map(d => d.completed + d.ongoing));
   const getX = (i: number) => padding + (i / (model.cfd.length - 1)) * (w - padding * 2);
@@ -138,17 +139,28 @@ async function drawCFD(model: Model) {
   // Horizontal Grid Lines (Y-Axis)
   const ticks = 5;
   for (let i = 0; i <= ticks; i++) {
-    const val = (maxVal / ticks) * i;
+    const val = (Math.trunc(maxVal / ticks)) * i;
     const y = Math.floor(getY(val)) + 0.5;
     ctx.moveTo(padding, y);
     ctx.lineTo(w - padding, y);
+    ctx.fillStyle = "#777";
+    ctx.fillText(val.toString(), padding - 18, y);
   }
 
   // Vertical Grid Lines (X-Axis) - matching data points
-  model.cfd.forEach((_, i) => {
+  model.cfd.forEach((val, i) => {
     const x = Math.floor(getX(i)) + 0.5;
     ctx.moveTo(x, padding);
     ctx.lineTo(x, h - padding);
+
+    let day = val.date.split('-')[2];
+
+    ctx.fillStyle = "#777";
+    if (i === 0)                                          ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((model.cfd.length - 1) / 4))     ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((model.cfd.length - 1) / 2))     ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((model.cfd.length - 1) * 3 / 4)) ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === model.cfd.length - 1)                       ctx.fillText(day, x - 5, h - padding + 10);
   });
   ctx.stroke();
 
@@ -171,8 +183,39 @@ async function drawCFD(model: Model) {
   ctx.lineTo(getX(model.cfd.length - 1), h - padding); // End at bottom
   ctx.closePath(); // This connects back to the start and fills
   ctx.fill();
-
 }
+
+
+async function drawCFDCrosshair(evt: MouseEvent) {
+  const canvas = evt.target as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) return;
+
+  // Get the canvas's position on the screen
+  const rect = canvas.getBoundingClientRect();
+
+  // Calculate mouse position relative to the canvas
+  const x = evt.clientX - rect.left;
+  const y = evt.clientY - rect.top;
+
+  // Clear the canvas before each redraw
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 1;
+
+  // Draw horizontal line
+  ctx.moveTo(0, y);
+  ctx.lineTo(canvas.width, y);
+
+  // Draw vertical line
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, canvas.height);
+
+  ctx.stroke();
+}
+
 
 async function main() {
   let el = document.getElementById("model");
@@ -184,6 +227,8 @@ async function main() {
   console.log(model)
   el.remove();
 
+  // Register event listeners
+
   document.body.addEventListener('wheel', (_: WheelEvent) => {
     requestAnimationFrame(async () => await drawCFD(model));
   })
@@ -193,7 +238,11 @@ async function main() {
     render: renderStat,
     effects: [
       async () => console.log("EFFECT1"),
-      async () => await drawCFD(model)
+      async () => await drawCFD(model),
+      async () => {
+        const canvas = document.getElementById("cfd-canvas-crosshair") as HTMLCanvasElement;
+        canvas.addEventListener('mousemove', drawCFDCrosshair);
+      }
     ],
     root: document.getElementById("app")!
   });
