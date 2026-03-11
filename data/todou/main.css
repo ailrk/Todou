@@ -26,7 +26,7 @@ body {
 	font: 14px sans-serif;
 	line-height: 1.4em;
 	background: #f5f5f5;
-	color: #4d4d4d;
+  color: #777;
 	min-width: 230px;
 	max-width: 550px;
 	margin: 0 auto;
@@ -121,6 +121,20 @@ nav .stat-icon::before {
 nav .stat-icon:hover::before {
 	border-color: rgba(175, 47, 47, 0.1);
 }
+
+
+nav .back-icon::before {
+  background-image: url('back.svg');
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+
+nav .back-icon:hover::before {
+	border-color: rgba(175, 47, 47, 0.1);
+}
+
 
 .todoapp {
 	background: #fff;
@@ -676,6 +690,31 @@ html .clear-completed:active {
   cursor: pointer;
   line-height: 1;
   -webkit-font-smoothing: antialiased;
+}
+
+
+.cfd-controls {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+
+.cfd-controls h2 {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+
+#cfd-canvas {
+  display: block;
+}
+
+.cfd-footer {
+  padding: 10px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: space-around;
 }
 
 

@@ -14,6 +14,7 @@ import Data.Aeson qualified as Aeson
 import Data.Maybe (catMaybes)
 import Data.List (sort, foldl')
 import Data.Containers.ListUtils (nubOrd)
+import Data.Text (Text)
 
 ----------------------------------------
 -- Domain.Stat
@@ -74,6 +75,7 @@ createCumulativeFlow r todos =
   let
       (start, end)  = cfrToDayRange r todos
 
+      -- todosInRange  = catMaybes $ rangeQuery start end todos
       todosInRange  = catMaybes $ rangeQuery start end todos
 
       completedCnt  = let es = concat $ fmap (.entries) todosInRange
@@ -110,13 +112,38 @@ createCumulativeFlow r todos =
                                 Just Nothing -> (cfs, cc)
                                 Nothing      -> (cfs, cc)
 
-   in fst $ foldl' go ([], completedCnt) days
+   in reverse $ fst $ foldl' go ([], completedCnt) days
+
+
+-- | Prepare [CF] so there is no gap between days for a month. The result `CFDMonth` is ready
+-- for the frontend to render.
+--
+createCFDMonth :: Month -> Map Day (Maybe Todo) -> CFDMonth
+createCFDMonth month todos =
+  let cfd          = createCumulativeFlow (CFRMonth month) todos -- cfd is already sorted
+      (start, end) = cfrToDayRange (CFRMonth month) todos
+
+      go (x:xs) (y@(CF { date }):ys) a
+        | x < date = let a' = a { date = x } :: CF
+                      in a' : go xs (y:ys) a'
+        | x == date = y : go xs ys y
+        | otherwise = go (x:xs) ys a -- ignore
+      go [] _ _ = []
+      go _ [] _ = []
+   in CFDMonth $ go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
 
 
 data Model = Model
-  {
-
+  { date :: Text
+  , cfd  :: CFDMonth
   }
+
+
+instance ToJSON Model where
+  toJSON model = Aeson.object
+    [ "date" .= model.date
+    , "cfd"  .= model.cfd
+    ]
 
 
 ----------------------------------------

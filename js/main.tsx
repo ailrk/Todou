@@ -382,13 +382,13 @@ async function addEntry(model: Model) {
   model.nextId++;
   model.field = "";
   model.entries.push(newEntry);
-  vdom.render();
+  await vdom.render();
 }
 
 
-function updateField(model: Model, str: string) {
+async function updateField(model: Model, str: string) {
   model.field = str;
-  vdom.render();
+  await vdom.render();
 }
 
 
@@ -401,7 +401,7 @@ async function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
     await updateEntryAPI(model.date, id, entry.completedDate, entry.description)
   }
 
-  vdom.render();
+  await vdom.render();
 
   let ele = document.getElementById(`todo-${id}`);
   if (ele) {
@@ -410,27 +410,27 @@ async function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
 }
 
 
-function updateEntry(model: Model, id: EntryId, task: string) {
+async function updateEntry(model: Model, id: EntryId, task: string) {
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.description = task;
     }
   })
-  vdom.render();
+  await vdom.render();
 }
 
 
 async function deleteEntry(model: Model, id: EntryId) {
   await deleteEntryAPI(model.date, id);
   model.entries = model.entries.filter(entry => entry.id !== id);
-  vdom.render();
+  await vdom.render();
 }
 
 
 async function deleteCompletedEntries(model: Model) {
   await deleteCompletedEntriesAPI(model.date);
   model.entries = model.entries.filter((e) => !isCompleted(e));
-  vdom.render();
+  await vdom.render();
 }
 
 
@@ -441,28 +441,28 @@ async function checkEntry(model: Model, id: EntryId, completedDate: string | nul
       entry.completedDate = completedDate
     }
   });
-  vdom.render();
+  await vdom.render();
 }
 
 
 async function checkAllEntries(model: Model, allCompleted?: boolean) {
-  let formatted   = new Date().toISOString().split('T')[0];
+  let formatted     = new Date().toISOString().split('T')[0];
   let completedDate = allCompleted ? formatted : null;
   await updateEntriesAPI(model.date, completedDate);
   model.entries.forEach(entry => {
     entry.completedDate = completedDate
   });
-  vdom.render();
+  await vdom.render();
 }
 
 
-function changeVisibility(model: Model, visibility: Visibility) {
+async function changeVisibility(model: Model, visibility: Visibility) {
   model.visibility = visibility;
-  vdom.render();
+  await vdom.render();
 }
 
 
-function toggleCalendar(model: Model, show?: boolean) {
+async function toggleCalendar(model: Model, show?: boolean) {
   if (show !== undefined) {
     model.showCalendar = show;
   } else {
@@ -481,7 +481,7 @@ function toggleCalendar(model: Model, show?: boolean) {
     }
   }
 
-  vdom.render();
+  await vdom.render();
 
   if (model.showCalendar) {
     const el = document.querySelector('.calendar-modal');
@@ -492,19 +492,19 @@ function toggleCalendar(model: Model, show?: boolean) {
 }
 
 
-function nextCalendar(model: Model) {
+async function nextCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  vdom.render()
+  await vdom.render()
 }
 
 
-function prevCalendar(model: Model) {
+async function prevCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  vdom.render()
+  await vdom.render()
 }
 
 
@@ -565,7 +565,7 @@ async function updateEntryAPI(date: string, id: number, completedDate: string | 
 async function updateEntriesAPI(date: string, completedDate: string | null, description?: string) {
   const params = new URLSearchParams();
   if (completedDate !== null) {
-    params.set("completed", completedDate)
+    params.set("completedDate", completedDate)
   }
 
   if (description !== undefined) {
@@ -759,10 +759,11 @@ async function main() {
   vdom = newVdom({
     model: model,
     render: renderTodou,
+    effects: [],
     root: document.getElementById("app")!
   });
 
-  vdom.render();
+  await vdom.render();
 }
 
 

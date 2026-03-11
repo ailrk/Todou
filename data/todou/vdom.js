@@ -20,14 +20,17 @@ items to shift positions, breaking the diffing logic. To handle this, elements c
 first, and fall back to index-based comparison if no key is provided.
 */
 /** Create a new vdom object. The object can be tweaked after creation */
-export function newVdom({ model, root, render }) {
+export function newVdom({ model, root, render, effects }) {
     let _tree = undefined;
     let _root = root;
     return {
-        render: () => {
+        render: async () => {
             const newTree = render(model);
             updateElement(root, newTree, _tree);
             _tree = newTree;
+            for (const eff of effects) {
+                await eff(model);
+            }
         },
         root: _root,
         vroot: _tree

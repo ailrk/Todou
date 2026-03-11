@@ -37,20 +37,23 @@ export type VNode
 
 export interface VDom {
   root: HTMLElement,
-  render: () => void,
+  render: () => Promise<void>,
   vroot?: VNode
 }
 
 
 /** Create a new vdom object. The object can be tweaked after creation */
-export function newVdom<Model>({ model, root, render }: { model: Model, root: HTMLElement, render: (model: Model) => VNode }): VDom {
+export function newVdom<Model>({ model, root, render, effects }: { model: Model, root: HTMLElement, render: (model: Model) => VNode, effects: ((model: Model) => Promise<void>)[] }): VDom {
   let _tree: VNode | undefined = undefined;
   let _root = root;
   return {
-    render: () => {
+    render: async () => {
       const newTree = render(model);
       updateElement(root, newTree, _tree);
       _tree = newTree;
+      for (const eff of effects) {
+        await eff(model);
+      }
     },
     root: _root,
     vroot: _tree

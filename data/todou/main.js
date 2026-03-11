@@ -219,11 +219,11 @@ async function addEntry(model) {
     model.nextId++;
     model.field = "";
     model.entries.push(newEntry);
-    vdom.render();
+    await vdom.render();
 }
-function updateField(model, str) {
+async function updateField(model, str) {
     model.field = str;
-    vdom.render();
+    await vdom.render();
 }
 async function editingEntry(model, id, isEditing) {
     let entry = model.entries.filter(e => e.id === id).at(0);
@@ -233,29 +233,29 @@ async function editingEntry(model, id, isEditing) {
     if (!isEditing) {
         await updateEntryAPI(model.date, id, entry.completedDate, entry.description);
     }
-    vdom.render();
+    await vdom.render();
     let ele = document.getElementById(`todo-${id}`);
     if (ele) {
         ele.focus();
     }
 }
-function updateEntry(model, id, task) {
+async function updateEntry(model, id, task) {
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.description = task;
         }
     });
-    vdom.render();
+    await vdom.render();
 }
 async function deleteEntry(model, id) {
     await deleteEntryAPI(model.date, id);
     model.entries = model.entries.filter(entry => entry.id !== id);
-    vdom.render();
+    await vdom.render();
 }
 async function deleteCompletedEntries(model) {
     await deleteCompletedEntriesAPI(model.date);
     model.entries = model.entries.filter((e) => !isCompleted(e));
-    vdom.render();
+    await vdom.render();
 }
 async function checkEntry(model, id, completedDate) {
     await updateEntryAPI(model.date, id, completedDate);
@@ -264,7 +264,7 @@ async function checkEntry(model, id, completedDate) {
             entry.completedDate = completedDate;
         }
     });
-    vdom.render();
+    await vdom.render();
 }
 async function checkAllEntries(model, allCompleted) {
     let formatted = new Date().toISOString().split('T')[0];
@@ -273,13 +273,13 @@ async function checkAllEntries(model, allCompleted) {
     model.entries.forEach(entry => {
         entry.completedDate = completedDate;
     });
-    vdom.render();
+    await vdom.render();
 }
-function changeVisibility(model, visibility) {
+async function changeVisibility(model, visibility) {
     model.visibility = visibility;
-    vdom.render();
+    await vdom.render();
 }
-function toggleCalendar(model, show) {
+async function toggleCalendar(model, show) {
     if (show !== undefined) {
         model.showCalendar = show;
     }
@@ -296,7 +296,7 @@ function toggleCalendar(model, show) {
             app.focus();
         }
     }
-    vdom.render();
+    await vdom.render();
     if (model.showCalendar) {
         const el = document.querySelector('.calendar-modal');
         if (el !== null) {
@@ -304,17 +304,17 @@ function toggleCalendar(model, show) {
         }
     }
 }
-function nextCalendar(model) {
+async function nextCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    vdom.render();
+    await vdom.render();
 }
-function prevCalendar(model) {
+async function prevCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    vdom.render();
+    await vdom.render();
 }
 function nextDay(model) {
     const d = new Date(model.date + "T00:00:00");
@@ -360,7 +360,7 @@ async function updateEntryAPI(date, id, completedDate, description) {
 async function updateEntriesAPI(date, completedDate, description) {
     const params = new URLSearchParams();
     if (completedDate !== null) {
-        params.set("completed", completedDate);
+        params.set("completedDate", completedDate);
     }
     if (description !== undefined) {
         params.set("description", String(description));
@@ -509,9 +509,10 @@ async function main() {
     vdom = newVdom({
         model: model,
         render: renderTodou,
+        effects: [],
         root: document.getElementById("app")
     });
-    vdom.render();
+    await vdom.render();
 }
 let vdom;
 await main();
