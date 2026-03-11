@@ -268,9 +268,15 @@ server Options { port } handle = scotty port do
           flush handle -- flush on refresh
           readMVar bufferMvar
 
+        (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
+          Just (p, d) -> pure (p, formatDayYMD d)
+          Nothing -> pure ("", mempty)
+
         let cfd   = createCFDMonth month buffer.todos
-            model = Stat.Model { date = formatDayYMD date
-                               , cfd  = cfd
+            model = Stat.Model { date        = formatDayYMD date
+                               , cfd         = cfd
+                               , presenceMap = presenceMap
+                               , firstDay    = firstDay
                                }
 
         html . Lucid.renderText $ statView model

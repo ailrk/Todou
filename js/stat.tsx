@@ -70,8 +70,8 @@ function renderCFDControls(): VNode {
 function renderCFD(): VNode {
   return (
     <section class="cfd-container">
-      <canvas id="cfd-canvas" style="z-index: 1;"></canvas>
-      <canvas id="cfd-canvas-crosshair" style="z-index: 2;"></canvas>
+      <canvas id="cfd-canvas"></canvas>
+      <canvas id="cfd-canvas-crosshair"></canvas>
     </section>
   );
 }
@@ -102,11 +102,23 @@ function renderFooterInfo(): VNode {
 
 /* CFD */
 
-async function drawCFD(model: Model) {
-  const canvas = document.getElementById("cfd-canvas") as HTMLCanvasElement;
+interface CFDCanvas {
+  w: number,
+  h: number,
+  rect: DOMRect,
+  ctx: CanvasRenderingContext2D,
+  padding: number,
+  cfd: CF[],
+  getX: (i: number) => number,
+  getY: (i: number) => number,
+  maxY: number
+}
+
+
+function setupCanvas(canvas: HTMLCanvasElement, model: Model): CFDCanvas | undefined {
   const container = canvas.parentElement!;
   const ctx = canvas.getContext('2d');
-  if (!ctx || model.cfd.length === 0) return;
+  if (!ctx) return;
 
   // Force the canvas to match the container's physical size
   const dpr = window.devicePixelRatio || 1;
@@ -122,14 +134,31 @@ async function drawCFD(model: Model) {
   // Scale context for High-DPI sharpness
   ctx.scale(dpr, dpr);
 
-  // "w" and "h" are the logical CSS pixels
+  const padding = 25;
   const w = rect.width;
   const h = rect.height;
-  const padding = 25;
-
-  const maxVal = Math.max(...model.cfd.map(d => d.completed + d.ongoing));
+  const maxY = Math.max(...model.cfd.map(d => d.completed + d.ongoing));
   const getX = (i: number) => padding + (i / (model.cfd.length - 1)) * (w - padding * 2);
-  const getY = (v: number) => h - padding - (v / maxVal) * (h - padding * 2);
+  const getY = (v: number) => h - padding - (v / maxY) * (h - padding * 2);
+
+  // "w" and "h" are the logical CSS pixels
+  return {
+    w: rect.width,
+    h: rect.height,
+    rect: rect,
+    ctx: ctx,
+    maxY: maxY,
+    getX: getX,
+    getY: getY,
+    cfd: model.cfd,
+    padding: padding
+  }
+}
+
+async function drawCFD(model: Model) {
+  let c = setupCanvas(document.getElementById("cfd-canvas") as HTMLCanvasElement, model);
+  if (!c) return;
+  let { w, h, ctx, maxY, getX, getY, padding, cfd } = c;
 
   // Draw Background Grid
   ctx.strokeStyle = "#e0e0e0";
@@ -139,7 +168,7 @@ async function drawCFD(model: Model) {
   // Horizontal Grid Lines (Y-Axis)
   const ticks = 5;
   for (let i = 0; i <= ticks; i++) {
-    const val = (Math.trunc(maxVal / ticks)) * i;
+    const val = (Math.trunc(maxY / ticks)) * i;
     const y = Math.floor(getY(val)) + 0.5;
     ctx.moveTo(padding, y);
     ctx.lineTo(w - padding, y);
@@ -148,7 +177,7 @@ async function drawCFD(model: Model) {
   }
 
   // Vertical Grid Lines (X-Axis) - matching data points
-  model.cfd.forEach((val, i) => {
+  cfd.forEach((val, i) => {
     const x = Math.floor(getX(i)) + 0.5;
     ctx.moveTo(x, padding);
     ctx.lineTo(x, h - padding);
@@ -156,64 +185,136 @@ async function drawCFD(model: Model) {
     let day = val.date.split('-')[2];
 
     ctx.fillStyle = "#777";
-    if (i === 0)                                          ctx.fillText(day, x - 5, h - padding + 10);
-    if (i === Math.trunc((model.cfd.length - 1) / 4))     ctx.fillText(day, x - 5, h - padding + 10);
-    if (i === Math.trunc((model.cfd.length - 1) / 2))     ctx.fillText(day, x - 5, h - padding + 10);
-    if (i === Math.trunc((model.cfd.length - 1) * 3 / 4)) ctx.fillText(day, x - 5, h - padding + 10);
-    if (i === model.cfd.length - 1)                       ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === 0)                                    ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((cfd.length - 1) / 4))     ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((cfd.length - 1) / 2))     ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === Math.trunc((cfd.length - 1) * 3 / 4)) ctx.fillText(day, x - 5, h - padding + 10);
+    if (i === cfd.length - 1)                       ctx.fillText(day, x - 5, h - padding + 10);
   });
   ctx.stroke();
 
   // Draw Ongoing (Blue) on top
-  ctx.fillStyle = "rgba(52, 152, 219, 0.7)";
+  ctx.fillStyle = "rgba(52, 152, 219, 0.5)";
   ctx.beginPath();
   ctx.moveTo(getX(0), h - padding);
-  model.cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed + d.ongoing)));
-  ctx.lineTo(getX(model.cfd.length - 1), h - padding);
+  cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed + d.ongoing)));
+  ctx.lineTo(getX(cfd.length - 1), h - padding);
   ctx.closePath();
   ctx.fill();
 
-
   // Draw "Completed" Area (The Green Part)
-  // To fill, you MUST moveTo bottom-left, lineTo points, then closePath
-  ctx.fillStyle = "#2ecc71";
+  // To fill, you must moveTo bottom-left, lineTo points, then closePath
+  ctx.fillStyle = "rgba(86, 218, 44, 0.5)";
   ctx.beginPath();
   ctx.moveTo(getX(0), h - padding); // Start at bottom
-  model.cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed)));
-  ctx.lineTo(getX(model.cfd.length - 1), h - padding); // End at bottom
+  cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed)));
+  ctx.lineTo(getX(cfd.length - 1), h - padding); // End at bottom
   ctx.closePath(); // This connects back to the start and fills
   ctx.fill();
+
+  // Draw circles for Ongoing (Blue) data points
+  cfd.forEach((d, i) => {
+    ctx.fillStyle = "rgba(52, 152, 219, 1)"; // Fully opaque for better visibility
+    ctx.beginPath();
+    ctx.arc(getX(i), getY(d.completed + d.ongoing), 3, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // Draw circles for Completed (Green) data points
+  ctx.fillStyle = "#2ecc71";
+  cfd.forEach((d, i) => {
+    ctx.beginPath();
+    ctx.arc(getX(i), getY(d.completed), 3, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fill();
+  });
 }
 
 
-async function drawCFDCrosshair(evt: MouseEvent) {
-  const canvas = evt.target as HTMLCanvasElement;
-  const ctx = canvas.getContext('2d');
-  if (ctx === null) return;
+function drawTooltip(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, text: string) {
+  const padding = 8;
+  const fontSize = 12;
+  ctx.font = `${fontSize}px sans-serif`;
 
-  // Get the canvas's position on the screen
-  const rect = canvas.getBoundingClientRect();
+  // Measure text to size the box
+  const width  = ctx.measureText(text).width + padding * 2;
+  const height = fontSize + padding * 2;
 
-  // Calculate mouse position relative to the canvas
-  const x = evt.clientX - rect.left;
-  const y = evt.clientY - rect.top;
+  let x0 = x + 10;
+  let y0 = y - 10 ;
 
-  // Clear the canvas before each redraw
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (x0 + width > w) {
+    x0 = x0 - width;
+  }
 
+  if (y0 - height < 0) {
+    y0 = y + 10;
+  }
+
+  // Draw the bubble (Rounded rectangle)
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
   ctx.beginPath();
-  ctx.strokeStyle = '#777';
-  ctx.lineWidth = 1;
+  ctx.roundRect(x0, y0 - height, width, height, 5);
+  ctx.fill();
 
-  // Draw horizontal line
-  ctx.moveTo(0, y);
-  ctx.lineTo(canvas.width, y);
+  // Draw the text
+  ctx.fillStyle = "#fff";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x0 + padding, y0 - height / 2);
+}
 
-  // Draw vertical line
-  ctx.moveTo(x, 0);
-  ctx.lineTo(x, canvas.height);
 
-  ctx.stroke();
+function drawCFDCrosshair(model: Model)  {
+  let deltaX = 3;
+  let deltaY = 10;
+  return async (evt: MouseEvent) => {
+    let c = setupCanvas(evt.target as HTMLCanvasElement, model);
+    if (!c) return;
+    let { w, h, ctx, getX, getY, cfd, rect } = c;
+
+    // Calculate mouse position relative to the canvas
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+
+    // Clear the canvas before each redraw
+    ctx.clearRect(0, 0, w, h);
+
+    const hit = (x: number, n: number, date: string) => {
+      ctx.strokeStyle = "#fff";
+      const y = getY(n);
+      drawTooltip(ctx, x, y, w, `${date}, ${n}`);
+
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    cfd.forEach((d, i) => {
+      let x0 = getX(i);
+      let y0 = getY(d.completed);
+      let y1 = getY(d.completed + d.ongoing);
+
+      let f1 = x < x0 + deltaX && x > x0 - deltaX && y < y0 + deltaY && y > y0 - deltaY;
+      let f2 = x < x0 + deltaX && x > x0 - deltaX && y < y1 + deltaY && y > y1 - deltaY;
+
+      if (f1 && f2) {
+        if (Math.abs(y0 - y) < Math.abs(y1 - y)) {
+          hit(getX(i), d.completed, d.date);
+        } else {
+          hit(getX(i), d.completed + d.ongoing, d.date);
+        }
+      } else {
+        if (f1) {
+          hit(getX(i), d.completed, d.date);
+        }
+        if (f2) {
+          hit(getX(i), d.completed + d.ongoing, d.date);
+        }
+      }
+    });
+  };
 }
 
 
@@ -237,11 +338,11 @@ async function main() {
     model: model,
     render: renderStat,
     effects: [
-      async () => console.log("EFFECT1"),
       async () => await drawCFD(model),
       async () => {
+        console.log("REG");
         const canvas = document.getElementById("cfd-canvas-crosshair") as HTMLCanvasElement;
-        canvas.addEventListener('mousemove', drawCFDCrosshair);
+        canvas.addEventListener('mousemove', drawCFDCrosshair(model));
       }
     ],
     root: document.getElementById("app")!

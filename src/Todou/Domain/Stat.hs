@@ -15,6 +15,7 @@ import Data.Maybe (catMaybes)
 import Data.List (sort, foldl')
 import Data.Containers.ListUtils (nubOrd)
 import Data.Text (Text)
+import Data.ByteString (ByteString)
 
 ----------------------------------------
 -- Domain.Stat
@@ -134,8 +135,10 @@ createCFDMonth month todos =
 
 
 data Model = Model
-  { date :: Text
-  , cfd  :: CFDMonth
+  { date        :: Text
+  , cfd         :: CFDMonth
+  , presenceMap :: ByteString
+  , firstDay    :: Text
   }
 
 

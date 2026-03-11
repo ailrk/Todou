@@ -706,7 +706,14 @@ html .clear-completed:active {
 }
 
 
-#cfd-canvas {
+.cfd-container {
+  display: grid;
+  grid-template-areas: "stack";
+
+}
+
+#cfd-canvas, #cfd-canvas-crosshair {
+  grid-area: stack;
   display: block;
 }
 
