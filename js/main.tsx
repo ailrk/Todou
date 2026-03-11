@@ -134,7 +134,6 @@ function renderControls(model: Model): VNode {
     <footer class="footer" hidden={entries.length === 0}>
       {renderControlsCount(entriesLeft)}
       {renderControlsFilter(model, visibility)}
-      {renderControlsClear(model, entriesCompleted)}
     </footer>
   );
 }
@@ -167,19 +166,6 @@ function visibilitySwap(model: Model, uri: string, vis: Visibility, currentVis: 
         {vis}
       </a>
     </li>
-  );
-}
-
-
-function renderControlsClear(model: Model, entriesCompleted: number): VNode {
-  return (
-    <button
-      hidden={entriesCompleted === 0}
-      class="clear-completed"
-      onclick={() => deleteCompletedEntries(model)}
-    >
-      Clear completed {entriesCompleted}
-    </button>
   );
 }
 
@@ -423,13 +409,6 @@ async function updateEntry(model: Model, id: EntryId, task: string) {
 async function deleteEntry(model: Model, id: EntryId) {
   await deleteEntryAPI(model.date, id);
   model.entries = model.entries.filter(entry => entry.id !== id);
-  await vdom.render();
-}
-
-
-async function deleteCompletedEntries(model: Model) {
-  await deleteCompletedEntriesAPI(model.date);
-  model.entries = model.entries.filter((e) => !isCompleted(e));
   await vdom.render();
 }
 

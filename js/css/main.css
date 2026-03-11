@@ -712,7 +712,7 @@ html .clear-completed:active {
 
 }
 
-#cfd-canvas, #cfd-canvas-crosshair {
+#cfd-canvas, #cfd-canvas-datapoints {
   grid-area: stack;
   display: block;
 }

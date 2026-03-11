@@ -30,7 +30,7 @@ function renderCFDControls() {
 function renderCFD() {
     return (h("section", { class: "cfd-container" },
         h("canvas", { id: "cfd-canvas" }),
-        h("canvas", { id: "cfd-canvas-crosshair" })));
+        h("canvas", { id: "cfd-canvas-datapoints" })));
 }
 function renderCFDFooter(model) {
     const last = model.cfd[model.cfd.length - 1];
@@ -93,6 +93,7 @@ async function drawCFD(model) {
     if (!c)
         return;
     let { w, h, ctx, maxY, getX, getY, padding, cfd } = c;
+    let pageDay = Number.parseInt(model.date.split('-')[2]);
     // Draw Background Grid
     ctx.strokeStyle = "#e0e0e0";
     ctx.lineWidth = 1;
@@ -124,6 +125,10 @@ async function drawCFD(model) {
             ctx.fillText(day, x - 5, h - padding + 10);
         if (i === cfd.length - 1)
             ctx.fillText(day, x - 5, h - padding + 10);
+        if (i === pageDay - 1) {
+            ctx.fillStyle = "#444";
+            ctx.fillText(pageDay.toString(), x - 5, h - padding + 10);
+        }
     });
     ctx.stroke();
     // Draw Ongoing (Blue) on top
@@ -185,62 +190,62 @@ function drawTooltip(ctx, x, y, w, text) {
     ctx.textBaseline = "middle";
     ctx.fillText(text, x0 + padding, y0 - height / 2);
 }
-function drawCFDCrosshair(model) {
+function drawCFDDatapoints(canvas, model, evt) {
     let deltaX = 3;
     let deltaY = 10;
-    return async (evt) => {
-        let c = setupCanvas(evt.target, model);
-        if (!c)
-            return;
-        let { w, h, ctx, getX, getY, cfd, rect } = c;
-        // Calculate mouse position relative to the canvas
-        const x = evt.clientX - rect.left;
-        const y = evt.clientY - rect.top;
-        // Clear the canvas before each redraw
-        ctx.clearRect(0, 0, w, h);
-        const hit = (x, n, date) => {
-            ctx.strokeStyle = "#fff";
-            const y = getY(n);
-            drawTooltip(ctx, x, y, w, `${date}, ${n}`);
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        cfd.forEach((d, i) => {
-            let x0 = getX(i);
-            let y0 = getY(d.completed);
-            let y1 = getY(d.completed + d.ongoing);
-            let f1 = x < x0 + deltaX && x > x0 - deltaX && y < y0 + deltaY && y > y0 - deltaY;
-            let f2 = x < x0 + deltaX && x > x0 - deltaX && y < y1 + deltaY && y > y1 - deltaY;
-            if (f1 && f2) {
-                if (Math.abs(y0 - y) < Math.abs(y1 - y)) {
-                    hit(getX(i), d.completed, d.date);
-                }
-                else {
-                    hit(getX(i), d.completed + d.ongoing, d.date);
-                }
+    let c = setupCanvas(canvas, model);
+    if (!c)
+        return;
+    let { w, h, ctx, getX, getY, cfd, rect } = c;
+    // Calculate mouse position relative to the canvas
+    const x = evt ? evt.clientX - rect.left : 0;
+    const y = evt ? evt.clientY - rect.top : 0;
+    // Clear the canvas before each redraw
+    ctx.clearRect(0, 0, w, h);
+    const hit = (x, n, date) => {
+        ctx.strokeStyle = "#fff";
+        const y = getY(n);
+        drawTooltip(ctx, x, y, w, `${date}, ${n}`);
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.stroke();
+    };
+    cfd.forEach((d, i) => {
+        let x0 = getX(i);
+        let y0 = getY(d.completed);
+        let y1 = getY(d.completed + d.ongoing);
+        let f1 = x < x0 + deltaX && x > x0 - deltaX && y < y0 + deltaY && y > y0 - deltaY;
+        let f2 = x < x0 + deltaX && x > x0 - deltaX && y < y1 + deltaY && y > y1 - deltaY;
+        if (f1 && f2) {
+            if (Math.abs(y0 - y) < Math.abs(y1 - y)) {
+                hit(getX(i), d.completed, d.date);
             }
             else {
-                if (f1) {
-                    hit(getX(i), d.completed, d.date);
-                }
-                if (f2) {
-                    hit(getX(i), d.completed + d.ongoing, d.date);
-                }
+                hit(getX(i), d.completed + d.ongoing, d.date);
             }
-        });
-    };
+        }
+        else {
+            if (f1) {
+                hit(getX(i), d.completed, d.date);
+            }
+            if (f2) {
+                hit(getX(i), d.completed + d.ongoing, d.date);
+            }
+        }
+    });
 }
+/*
+ * Main
+ * */
 async function main() {
     let el = document.getElementById("model");
     if (!el) {
         throw Error("missing initial model");
     }
     let model = JSON.parse(el.textContent);
-    console.log(model);
     el.remove();
-    // Register event listeners
+    // Register top level event listeners
     document.body.addEventListener('wheel', (_) => {
         requestAnimationFrame(async () => await drawCFD(model));
     });
@@ -250,9 +255,9 @@ async function main() {
         effects: [
             async () => await drawCFD(model),
             async () => {
-                console.log("REG");
-                const canvas = document.getElementById("cfd-canvas-crosshair");
-                canvas.addEventListener('mousemove', drawCFDCrosshair(model));
+                const canvas = document.getElementById("cfd-canvas-datapoints");
+                drawCFDDatapoints(canvas, model);
+                canvas.addEventListener('mousemove', evt => drawCFDDatapoints(canvas, model, evt));
             }
         ],
         root: document.getElementById("app")

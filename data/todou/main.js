@@ -51,8 +51,7 @@ function renderControls(model) {
     const entriesLeft = entries.length - entriesCompleted;
     return (h("footer", { class: "footer", hidden: entries.length === 0 },
         renderControlsCount(entriesLeft),
-        renderControlsFilter(model, visibility),
-        renderControlsClear(model, entriesCompleted)));
+        renderControlsFilter(model, visibility)));
 }
 function renderControlsCount(entriesLeft) {
     return (h("span", { class: "todo-count" },
@@ -69,11 +68,6 @@ function renderControlsFilter(model, visibility) {
 function visibilitySwap(model, uri, vis, currentVis) {
     return (h("li", { onclick: () => changeVisibility(model, vis) },
         h("a", { href: uri, class: vis === currentVis ? "selected" : "" }, vis)));
-}
-function renderControlsClear(model, entriesCompleted) {
-    return (h("button", { hidden: entriesCompleted === 0, class: "clear-completed", onclick: () => deleteCompletedEntries(model) },
-        "Clear completed ",
-        entriesCompleted));
 }
 function renderFooterInfo() {
     return (h("footer", { class: "info" },
@@ -250,11 +244,6 @@ async function updateEntry(model, id, task) {
 async function deleteEntry(model, id) {
     await deleteEntryAPI(model.date, id);
     model.entries = model.entries.filter(entry => entry.id !== id);
-    await vdom.render();
-}
-async function deleteCompletedEntries(model) {
-    await deleteCompletedEntriesAPI(model.date);
-    model.entries = model.entries.filter((e) => !isCompleted(e));
     await vdom.render();
 }
 async function checkEntry(model, id, completedDate) {
