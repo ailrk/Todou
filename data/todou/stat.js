@@ -6,23 +6,36 @@ import { newVdom, h } from "./vdom.js";
 function renderStat(model) {
     return (h("div", { class: "todou-container", tabindex: "-1" },
         h("nav", null,
-            h("span", { onclick: (_) => { window.location.href = `/${model.date}`; } },
+            h("span", null,
                 " ",
-                model.date,
+                model.month,
                 " "),
-            h("span", { class: "back-icon", onclick: (_) => { window.location.href = `/${model.date}`; } })),
+            h("span", { class: "back-icon", onclick: (_) => { window.history.back(); } })),
         h("section", { class: "todoapp" }, renderCFDWidget(model)),
         renderFooterInfo()));
 }
 function renderCFDWidget(model) {
     return (h("section", { class: "cfd-widget" },
-        renderCFDControls(),
+        renderCFDControls(model),
         renderCFD(),
         renderCFDFooter(model)));
 }
-function renderCFDControls() {
+function renderCFDControls(model) {
+    function showNMonths(i) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('n', i.toString());
+        window.location.href = url.toString();
+    }
     return (h("header", { class: "cfd-controls" },
-        h("h2", null, "Cumulative Flow"),
+        h("div", { class: "dropdown" },
+            h("button", { class: "dropbtn" },
+                model.cfd.from,
+                " - ",
+                model.cfd.to),
+            h("div", { class: "dropdown-content" },
+                h("a", { href: "#", onclick: (_) => showNMonths(1) }, "1 Months"),
+                h("a", { href: "#", onclick: (_) => showNMonths(2) }, "2 Months"),
+                h("a", { href: "#", onclick: (_) => showNMonths(3) }, "3 Months"))),
         h("div", { class: "legend" },
             h("span", { style: "color: #2ecc71; margin-right: 10px;" }, "\u25CF Completed"),
             h("span", { style: "color: #3498db;" }, "\u25CF Ongoing"))));
@@ -93,7 +106,6 @@ async function drawCFD(model) {
     if (!c)
         return;
     let { w, h, ctx, maxY, getX, getY, padding, cfd } = c;
-    let pageDay = Number.parseInt(model.date.split('-')[2]);
     // Draw Background Grid
     ctx.strokeStyle = "#e0e0e0";
     ctx.lineWidth = 1;
@@ -102,19 +114,23 @@ async function drawCFD(model) {
     const ticks = 5;
     for (let i = 0; i <= ticks; i++) {
         const val = (Math.trunc(maxY / ticks)) * i;
-        const y = Math.floor(getY(val)) + 0.5;
+        const y = Math.floor(getY(val));
         ctx.moveTo(padding, y);
         ctx.lineTo(w - padding, y);
         ctx.fillStyle = "#777";
         ctx.fillText(val.toString(), padding - 18, y);
     }
     // Vertical Grid Lines (X-Axis) - matching data points
+    const gap = Math.floor(cfd.content.length / 32) + 1; // gap by month
     cfd.content.forEach((val, i) => {
-        const x = Math.floor(getX(i)) + 0.5;
-        ctx.moveTo(x, padding);
-        ctx.lineTo(x, h - padding);
-        let day = val.date.split('-')[2];
-        ctx.fillStyle = "#777";
+        const x = getX(i);
+        if (i % gap === 0) {
+            ctx.moveTo(x, padding);
+            ctx.lineTo(x, h - padding);
+            ctx.stroke();
+        }
+        let day = val.date.substring(5, 10);
+        ctx.strokeStyle = "#e0e0e0";
         if (i === 0)
             ctx.fillText(day, x - 5, h - padding + 10);
         if (i === Math.trunc((cfd.content.length - 1) / 4))
@@ -125,10 +141,6 @@ async function drawCFD(model) {
             ctx.fillText(day, x - 5, h - padding + 10);
         if (i === cfd.content.length - 1)
             ctx.fillText(day, x - 5, h - padding + 10);
-        if (i === pageDay - 1) {
-            ctx.fillStyle = "#444";
-            ctx.fillText(pageDay.toString(), x - 5, h - padding + 10);
-        }
     });
     ctx.stroke();
     // Draw Ongoing (Blue) on top
@@ -152,7 +164,7 @@ async function drawCFD(model) {
     cfd.content.forEach((d, i) => {
         ctx.fillStyle = "rgba(52, 152, 219, 1)"; // Fully opaque for better visibility
         ctx.beginPath();
-        ctx.arc(getX(i), getY(d.completed + d.ongoing), 3, 0, Math.PI * 2);
+        ctx.arc(getX(i), getY(d.completed + d.ongoing), 2, 0, Math.PI * 2);
         ctx.closePath();
         ctx.fill();
     });
@@ -160,7 +172,7 @@ async function drawCFD(model) {
     ctx.fillStyle = "#2ecc71";
     cfd.content.forEach((d, i) => {
         ctx.beginPath();
-        ctx.arc(getX(i), getY(d.completed), 3, 0, Math.PI * 2);
+        ctx.arc(getX(i), getY(d.completed), 2, 0, Math.PI * 2);
         ctx.closePath();
         ctx.fill();
     });
@@ -169,7 +181,7 @@ async function drawCFD(model) {
     let lastI = cfd.content.length - 1;
     let last = cfd.content[lastI];
     ctx.beginPath();
-    ctx.arc(getX(lastI), getY(last.completed + cfd.completedAfter), 3, 0, Math.PI * 2);
+    ctx.arc(getX(lastI), getY(last.completed + cfd.completedAfter), 2, 0, Math.PI * 2);
     ctx.closePath();
     ctx.fill();
 }
@@ -199,7 +211,7 @@ function drawTooltip(ctx, x, y, w, text) {
     ctx.fillText(text, x0 + padding, y0 - height / 2);
 }
 function drawCFDDatapoints(canvas, model, evt) {
-    let deltaX = 3;
+    let deltaX = 2;
     let deltaY = 10;
     let c = setupCanvas(canvas, model);
     if (!c)
@@ -252,7 +264,7 @@ function drawCFDDatapoints(canvas, model, evt) {
 }
 /*
  * Main
- * */
+ */
 async function main() {
     let el = document.getElementById("model");
     if (!el) {

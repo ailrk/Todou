@@ -11,7 +11,7 @@ function renderTodou(model) {
                 " ",
                 model.date,
                 " "),
-            h("span", { class: "stat-icon", onclick: (_) => { window.location.href = `/stat?date=${model.date}`; } })),
+            h("span", { class: "stat-icon", onclick: (_) => { window.location.href = `/stat?month=${model.date.substring(0, 7)}`; } })),
         h("section", { class: "todoapp" },
             renderInput(model),
             renderEntries(model),
@@ -36,7 +36,7 @@ function renderEntries(model) {
     const isVisible = (entry) => {
         switch (visibility) {
             case "Completed": return isCompleted(entry);
-            case "Active": return isCompleted(entry);
+            case "Active": return !isCompleted(entry);
             default: return true;
         }
     };
@@ -362,13 +362,6 @@ async function updateEntriesAPI(date, completedDate, description) {
 }
 async function deleteEntryAPI(date, id) {
     let result = await fetch(`/entry/delete/${date}/${id}`, { method: "DELETE" });
-    if (!result.ok) {
-        throw new Error(`HTTP Error ${result.status}`);
-    }
-    return result.json();
-}
-async function deleteCompletedEntriesAPI(date) {
-    let result = await fetch(`/entry/delete/${date}?completed`, { method: "DELETE" });
     if (!result.ok) {
         throw new Error(`HTTP Error ${result.status}`);
     }

@@ -16,7 +16,6 @@ import Data.List (sort, foldl')
 import Data.Containers.ListUtils (nubOrd)
 import Data.Text (Text)
 import Data.ByteString (ByteString)
-import Data.Bifunctor (Bifunctor(..))
 
 ----------------------------------------
 -- Domain.Stat
@@ -27,7 +26,7 @@ import Data.Bifunctor (Bifunctor(..))
 data CFR
   = CFRYear Year
   | CFRMonth Month
-  | CFRAll
+  | CFRMonthRange Month Month
   deriving (Show, Eq)
 
 
@@ -49,44 +48,65 @@ instance ToJSON CF where
       ]
 
 
--- Cumulative Flow Data for a month, resolution is day
-data CFDMonth = CFDMonth
+data CFSegment = CFSegment
   { content        :: [CF]
-  , completedAfter :: Int
+  , completedAfter :: Map Day Int
   }
   deriving (Show, Eq)
 
 
+instance Semigroup CFSegment where
+  (<>) = mergeCFSegment
 
-instance ToJSON CFDMonth where
-  toJSON (CFDMonth content completedAfter) =
-    Aeson.object
-      [ "content"        .= content
-      , "completedAfter" .= completedAfter
-      ]
+
+-- | Bump the CFSegment as if it continues from i.
+bumpCFSegment :: CF -> CFSegment -> CFSegment
+bumpCFSegment i (CFSegment cfs ca) =
+  let bump cf = cf { completed = cf.completed + i.completed, ongoing = cf.ongoing + i.ongoing }
+   in CFSegment { content        = fmap bump cfs
+                , completedAfter = ca
+                }
+
+
+-- | Merge to consecutive CFSegments.
+mergeCFSegment :: CFSegment -> CFSegment -> CFSegment
+mergeCFSegment (CFSegment [] _) rss = rss
+mergeCFSegment (CFSegment ls lca) rss =
+  let cs1 = bumpCFSegment (last ls) rss
+      rs1 = let loop seg ca = case seg of
+                               x@CF { date }:xs -> case Map.lookup date ca of
+                                                     Just n  -> x { completed = x.completed + n }:loop xs (Map.delete date ca)
+                                                     Nothing -> x:loop xs ca
+                               []   -> seg
+             in loop cs1.content lca
+    in CFSegment { content        = ls <> rs1
+                 , completedAfter = rss.completedAfter
+                 }
 
 
 -- | Convert a CFR into a day range.
-cfrToDayRange ::  CFR -> Map Day (Maybe Todo) -> (Day, Day)
-cfrToDayRange r todos =
+cfrToDayRange ::  CFR -> (Day, Day)
+cfrToDayRange r =
   case r of
     CFRYear year ->
       (YearMonthDay year 1 1, YearMonthDay year 12 31)
     CFRMonth month ->
       let YearMonth year monthOfYear = month
        in ( MonthDay month 1, MonthDay month (gregorianMonthLength year monthOfYear))
-    CFRAll ->
-      let (k1, _) = Map.findMin todos
-          (k2, _) = Map.findMax todos
-       in (k1, k2)
+    CFRMonthRange from to ->
+      if from <= to
+         then let (from1, _) = cfrToDayRange (CFRMonth from)
+                  (_, to2) = cfrToDayRange (CFRMonth to)
+               in (from1, to2)
+          else  cfrToDayRange (CFRMonth from)
 
 
 -- | Create a list of CF that can be plotted as a Cumulative Flow Diagram.
 -- This function uses `rangeQuery` which is O(log(n) + log(n')).
-createCumulativeFlow :: CFR -> Map Day (Maybe Todo) -> ([CF], Map Day Int)
-createCumulativeFlow r todos =
+createCFSegment :: CFR -> Map Day (Maybe Todo) -> CFSegment
+createCFSegment r todos =
   let
-      (start, end)  = cfrToDayRange r todos
+      (start, end)  = cfrToDayRange r
 
       todosInRange  = catMaybes $ rangeQuery (Just start) (Just end) todos
 
@@ -124,33 +144,71 @@ createCumulativeFlow r todos =
                                 Just Nothing -> (cfs, cc)
                                 Nothing      -> (cfs, cc)
 
-   in first reverse $ foldl' go ([], completedCnt) days
+      (xs, completedAfter) =  foldl' go ([], completedCnt) days
+   in CFSegment (reverse xs) completedAfter
 
 
 -- | Prepare [CF] so there is no gap between days for a month. The result `CFDMonth` is ready
 -- for the frontend to render.
-createCFDMonth :: Month -> Map Day (Maybe Todo) -> CFDMonth
-createCFDMonth month todos =
-  let (cfd, residue) = createCumulativeFlow (CFRMonth month) todos -- cfd is already sorted
-      (start, end)   = cfrToDayRange (CFRMonth month) todos
+createCFSegmentFromMonth :: Month -> Map Day (Maybe Todo) -> CFSegment
+createCFSegmentFromMonth month todos =
+  let CFSegment cfd residue = createCFSegment (CFRMonth month) todos -- cfd is already sorted
+      (start, end)     = cfrToDayRange (CFRMonth month)
 
       go (x:xs) (y@(CF { date }):ys) a
         | x < date = let a' = a { date = x } :: CF
                       in a' : go xs (y:ys) a'
+
         | x == date = y : go xs ys y
+
         | otherwise = go (x:xs) ys a -- ignore
+
       go (x:xs) [] a = let a' = a { date = x } :: CF
                         in a' : go xs [] a'
       go [] _ _ = []
 
-    in CFDMonth { content        = go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
-                , completedAfter = sum (Map.elems residue)
-                }
+    in CFSegment { content        = go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
+                 , completedAfter = residue
+                 }
+
+
+----------------------------------------
+-- DTO
+----------------------------------------
+
+
+toCFD :: CFR -> CFSegment -> CFD
+toCFD cfr CFSegment { content, completedAfter } =
+  let (start, end) = cfrToDayRange cfr
+   in CFD { content        = content
+          , completedAfter = sum (Map.elems completedAfter)
+          , from           = start
+          , to             = end
+          }
+
+
+data CFD = CFD
+  { content        :: [CF]
+  , completedAfter :: Int
+  , from           :: Day
+  , to             :: Day
+  }
+  deriving (Show, Eq)
+
+
+instance ToJSON CFD where
+  toJSON (CFD content completedAfter from to) =
+    Aeson.object
+      [ "content"        .= content
+      , "completedAfter" .= completedAfter
+      , "from"           .= from
+      , "to"             .= to
+      ]
 
 
 data Model = Model
-  { date        :: Text
-  , cfd         :: CFDMonth
+  { month       :: Month
+  , cfd         :: CFD
   , presenceMap :: ByteString
   , firstDay    :: Text
   }
@@ -158,8 +216,8 @@ data Model = Model
 
 instance ToJSON Model where
   toJSON model = Aeson.object
-    [ "date" .= model.date
-    , "cfd"  .= model.cfd
+    [ "month" .= model.month
+    , "cfd"   .= model.cfd
     ]
 
 

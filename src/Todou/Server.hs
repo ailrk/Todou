@@ -41,14 +41,15 @@ import Network.Wai.Middleware.RequestLogger (logStdout)
 import Text.Read (readMaybe)
 import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
 import Web.Cookie (parseCookies)
-import Data.Time.Calendar.Month (pattern MonthDay)
-import Todou.Domain.Stat (createCFDMonth)
+import Data.Time.Calendar.Month (pattern MonthDay, Month)
+import Todou.Domain.Stat (CFR (..), createCFSegmentFromMonth)
 import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer (..), pattern TodoLoaded, pattern TodoNotExists, pattern TodoNotLoaded, Model(..), updateTodo, deleteEntry, updateEntry, insertTodo, todoToModel)
 import Todou.Domain.Todo qualified as Todo
 import Todou.Domain.Stat qualified as Stat
 import Todou.Option
 import Todou.Store (Handle, getBufferMVar, flush, getPresences, loadTodo, modifyBuffer)
 import Web.Scotty.Trans (ActionT)
+import Data.List (iterate')
 
 
 ----------------------------------------
@@ -61,6 +62,13 @@ instance Parsable Day where
     case parseTimeM @Maybe @Day True defaultTimeLocale "%Y-%m-%d" (LText.unpack s) of
       Just date -> Right date
       Nothing   -> Left  "Invalid date format. expecting: %Y-%m-%d"
+
+
+instance Parsable Month where
+  parseParam s =
+    case parseTimeM @Maybe @Month True defaultTimeLocale "%Y-%m" (LText.unpack s) of
+      Just month -> Right month
+      Nothing   -> Left  "Invalid date format. expecting: %Y-%m"
 
 
 instance Parsable EntryId where
@@ -175,12 +183,9 @@ getTimeZoneFromCookies = do
   pure (mCookies >>= lookup "timezone" . parseCookies . Text.encodeUtf8 . LText.toStrict)
 
 
-
-
 server :: Options -> Handle -> IO ()
 server Options { port } handle = scotty port do
   middleware logStdout
-
 
   get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
   get "/stat.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/stat.js")
@@ -255,14 +260,16 @@ server Options { port } handle = scotty port do
 
     getTimeZoneFromCookies >>= \case
       Just tz -> do
-        date <- queryParamMaybe @Day "date" >>= \case
+        month <- queryParamMaybe @Month "month" >>= \case
           Just d  -> pure d
           Nothing -> do
             localTime <- nowInlocalTime tz
-            pure localTime.localDay
+            let (MonthDay m _) = localTime.localDay
+            pure m
 
-        let MonthDay month _ = date
-            bufferMvar       = getBufferMVar handle
+        nmonths <- ((min 3) . fromMaybe 1) <$> queryParamMaybe @Int "n"
+
+        let bufferMvar = getBufferMVar handle
 
         buffer <- liftIO do
           flush handle -- flush on refresh
@@ -272,9 +279,11 @@ server Options { port } handle = scotty port do
           Just (p, d) -> pure (p, formatDayYMD d)
           Nothing -> pure ("", mempty)
 
-        let cfd   = createCFDMonth month buffer.todos
-            model = Stat.Model { date        = formatDayYMD date
-                               , cfd         = cfd
+        let start = iterate' pred month !! ((max nmonths 1) - 1)
+            end   = month
+            seg   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start..end] ]
+            model = Stat.Model { month       = month
+                               , cfd         = Stat.toCFD (CFRMonthRange start end) seg
                                , presenceMap = presenceMap
                                , firstDay    = firstDay
                                }

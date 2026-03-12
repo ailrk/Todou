@@ -54,7 +54,7 @@ function renderTodou(model: Model): VNode {
         <span onclick={(_: MouseEvent) => { toggleCalendar(model); }}> {model.date} </span>
         <span
           class="stat-icon"
-          onclick={(_: MouseEvent) => { window.location.href = `/stat?date=${model.date}`; }}
+          onclick={(_: MouseEvent) => { window.location.href = `/stat?month=${model.date.substring(0, 7)}`; }}
         ></span>
       </nav>
       <section class="todoapp">
@@ -103,7 +103,7 @@ function renderEntries(model: Model): VNode {
   const isVisible = (entry: Entry) => {
     switch (visibility) {
       case "Completed": return isCompleted(entry);
-      case "Active": return isCompleted(entry);
+      case "Active": return !isCompleted(entry);
       default: return true;
     }
   };
@@ -566,16 +566,6 @@ async function deleteEntryAPI(date: string, id: number) {
   }
   return result.json();
 }
-
-
-async function deleteCompletedEntriesAPI(date: string) {
-  let result = await fetch(`/entry/delete/${date}?completed`, { method: "DELETE" });
-  if (!result.ok) {
-    throw new Error(`HTTP Error ${result.status}`);
-  }
-  return result.json();
-}
-
 
 
 /*

@@ -8,15 +8,17 @@ interface CF {
 };
 
 
-interface CFDMonth {
+interface CFD {
   content: CF[];
   completedAfter: number;
+  from: string;
+  to: string;
 }
 
 
 interface Model {
-  date: string;
-  cfd:  CFDMonth;
+  month: string;
+  cfd:  CFD;
 }
 
 
@@ -28,13 +30,10 @@ function renderStat(model: Model): VNode {
   return (
     <div class="todou-container" tabindex="-1">
       <nav>
-        <span
-          onclick={
-            (_: MouseEvent) => { window.location.href = `/${model.date}`; }}
-        > {model.date} </span>
+        <span> {model.month} </span>
         <span
           class="back-icon"
-          onclick={(_: MouseEvent) => { window.location.href = `/${model.date}`; }}
+          onclick={(_: MouseEvent) => { window.history.back(); }}
         ></span>
       </nav>
       <section class="todoapp">
@@ -49,7 +48,7 @@ function renderStat(model: Model): VNode {
 function renderCFDWidget(model: Model): VNode {
   return (
     <section class="cfd-widget">
-      {renderCFDControls()}
+      {renderCFDControls(model)}
       {renderCFD()}
       {renderCFDFooter(model)}
     </section>
@@ -57,10 +56,23 @@ function renderCFDWidget(model: Model): VNode {
 }
 
 
-function renderCFDControls(): VNode {
+function renderCFDControls(model: Model): VNode {
+  function showNMonths(i: number) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('n', i.toString());
+    window.location.href = url.toString();
+  }
+
   return (
     <header class="cfd-controls">
-      <h2>Cumulative Flow</h2>
+      <div class="dropdown">
+        <button class="dropbtn">{model.cfd.from} - {model.cfd.to}</button>
+        <div class="dropdown-content">
+          <a href="#" onclick={(_: MouseEvent) => showNMonths(1)}>1 Months</a>
+          <a href="#" onclick={(_: MouseEvent) => showNMonths(2)}>2 Months</a>
+          <a href="#" onclick={(_: MouseEvent) => showNMonths(3)}>3 Months</a>
+        </div>
+      </div>
       <div class="legend">
         <span style="color: #2ecc71; margin-right: 10px;">● Completed</span>
         <span style="color: #3498db;">● Ongoing</span>
@@ -103,7 +115,10 @@ function renderFooterInfo(): VNode {
 }
 
 
-/* CFD */
+/*
+ * CFD
+ */
+
 
 interface CFDCanvas {
   w: number,
@@ -111,7 +126,7 @@ interface CFDCanvas {
   rect: DOMRect,
   ctx: CanvasRenderingContext2D,
   padding: number,
-  cfd: CFDMonth,
+  cfd: CFD,
   getX: (i: number) => number,
   getY: (i: number) => number,
   maxY: number
@@ -162,7 +177,6 @@ async function drawCFD(model: Model) {
   let c = setupCanvas(document.getElementById("cfd-canvas") as HTMLCanvasElement, model);
   if (!c) return;
   let { w, h, ctx, maxY, getX, getY, padding, cfd } = c;
-  let pageDay = Number.parseInt(model.date.split('-')[2]);
 
   // Draw Background Grid
   ctx.strokeStyle = "#e0e0e0";
@@ -173,31 +187,34 @@ async function drawCFD(model: Model) {
   const ticks = 5;
   for (let i = 0; i <= ticks; i++) {
     const val = (Math.trunc(maxY / ticks)) * i;
-    const y = Math.floor(getY(val)) + 0.5;
+    const y = Math.floor(getY(val));
     ctx.moveTo(padding, y);
     ctx.lineTo(w - padding, y);
     ctx.fillStyle = "#777";
     ctx.fillText(val.toString(), padding - 18, y);
   }
 
+
+
   // Vertical Grid Lines (X-Axis) - matching data points
+  const gap = Math.floor(cfd.content.length / 32) + 1; // gap by month
   cfd.content.forEach((val, i) => {
-    const x = Math.floor(getX(i)) + 0.5;
-    ctx.moveTo(x, padding);
-    ctx.lineTo(x, h - padding);
+    const x = getX(i);
 
-    let day = val.date.split('-')[2];
+    if (i % gap === 0) {
+      ctx.moveTo(x, padding);
+      ctx.lineTo(x, h - padding);
+      ctx.stroke();
+    }
 
-    ctx.fillStyle = "#777";
-    if (i === 0)                                    ctx.fillText(day, x - 5, h - padding + 10);
+    let day = val.date.substring(5, 10);
+
+    ctx.strokeStyle = "#e0e0e0";
+    if (i === 0)                                            ctx.fillText(day, x - 5, h - padding + 10);
     if (i === Math.trunc((cfd.content.length - 1) / 4))     ctx.fillText(day, x - 5, h - padding + 10);
     if (i === Math.trunc((cfd.content.length - 1) / 2))     ctx.fillText(day, x - 5, h - padding + 10);
     if (i === Math.trunc((cfd.content.length - 1) * 3 / 4)) ctx.fillText(day, x - 5, h - padding + 10);
     if (i === cfd.content.length - 1)                       ctx.fillText(day, x - 5, h - padding + 10);
-    if (i === pageDay - 1) {
-      ctx.fillStyle = "#444";
-      ctx.fillText(pageDay.toString(), x - 5, h - padding + 10);
-    }
   });
   ctx.stroke();
 
@@ -224,7 +241,7 @@ async function drawCFD(model: Model) {
   cfd.content.forEach((d, i) => {
     ctx.fillStyle = "rgba(52, 152, 219, 1)"; // Fully opaque for better visibility
     ctx.beginPath();
-    ctx.arc(getX(i), getY(d.completed + d.ongoing), 3, 0, Math.PI * 2);
+    ctx.arc(getX(i), getY(d.completed + d.ongoing), 2, 0, Math.PI * 2);
     ctx.closePath();
     ctx.fill();
   });
@@ -233,7 +250,7 @@ async function drawCFD(model: Model) {
   ctx.fillStyle = "#2ecc71";
   cfd.content.forEach((d, i) => {
     ctx.beginPath();
-    ctx.arc(getX(i), getY(d.completed), 3, 0, Math.PI * 2);
+    ctx.arc(getX(i), getY(d.completed), 2, 0, Math.PI * 2);
     ctx.closePath();
     ctx.fill();
   });
@@ -244,7 +261,7 @@ async function drawCFD(model: Model) {
   let lastI = cfd.content.length - 1;
   let last  = cfd.content[lastI];
   ctx.beginPath();
-  ctx.arc(getX(lastI), getY(last.completed + cfd.completedAfter), 3, 0, Math.PI * 2);
+  ctx.arc(getX(lastI), getY(last.completed + cfd.completedAfter), 2, 0, Math.PI * 2);
   ctx.closePath();
   ctx.fill();
 }
@@ -284,7 +301,7 @@ function drawTooltip(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 
 
 function drawCFDDatapoints(canvas: HTMLCanvasElement, model: Model, evt?: MouseEvent)  {
-  let deltaX = 3;
+  let deltaX = 2;
   let deltaY = 10;
   let c = setupCanvas(canvas, model);
   if (!c) return;
@@ -344,7 +361,7 @@ function drawCFDDatapoints(canvas: HTMLCanvasElement, model: Model, evt?: MouseE
 
 /*
  * Main
- * */
+ */
 
 
 async function main() {
