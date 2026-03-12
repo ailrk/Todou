@@ -16,6 +16,7 @@ import Data.List (sort, foldl')
 import Data.Containers.ListUtils (nubOrd)
 import Data.Text (Text)
 import Data.ByteString (ByteString)
+import Data.Bifunctor (Bifunctor(..))
 
 ----------------------------------------
 -- Domain.Stat
@@ -49,9 +50,20 @@ instance ToJSON CF where
 
 
 -- Cumulative Flow Data for a month, resolution is day
-newtype CFDMonth = CFDMonth [CF]
+data CFDMonth = CFDMonth
+  { content        :: [CF]
+  , completedAfter :: Int
+  }
   deriving (Show, Eq)
-  deriving newtype ToJSON
+
+
+
+instance ToJSON CFDMonth where
+  toJSON (CFDMonth content completedAfter) =
+    Aeson.object
+      [ "content"        .= content
+      , "completedAfter" .= completedAfter
+      ]
 
 
 -- | Convert a CFR into a day range.
@@ -71,13 +83,12 @@ cfrToDayRange r todos =
 
 -- | Create a list of CF that can be plotted as a Cumulative Flow Diagram.
 -- This function uses `rangeQuery` which is O(log(n) + log(n')).
-createCumulativeFlow :: CFR -> Map Day (Maybe Todo) -> [CF]
+createCumulativeFlow :: CFR -> Map Day (Maybe Todo) -> ([CF], Map Day Int)
 createCumulativeFlow r todos =
   let
       (start, end)  = cfrToDayRange r todos
 
-      -- todosInRange  = catMaybes $ rangeQuery start end todos
-      todosInRange  = catMaybes $ rangeQuery start end todos
+      todosInRange  = catMaybes $ rangeQuery (Just start) (Just end) todos
 
       completedCnt  = let es = concat $ fmap (.entries) todosInRange
                        in foldl'
@@ -113,15 +124,15 @@ createCumulativeFlow r todos =
                                 Just Nothing -> (cfs, cc)
                                 Nothing      -> (cfs, cc)
 
-   in reverse $ fst $ foldl' go ([], completedCnt) days
+   in first reverse $ foldl' go ([], completedCnt) days
 
 
 -- | Prepare [CF] so there is no gap between days for a month. The result `CFDMonth` is ready
 -- for the frontend to render.
 createCFDMonth :: Month -> Map Day (Maybe Todo) -> CFDMonth
 createCFDMonth month todos =
-  let cfd          = createCumulativeFlow (CFRMonth month) todos -- cfd is already sorted
-      (start, end) = cfrToDayRange (CFRMonth month) todos
+  let (cfd, residue) = createCumulativeFlow (CFRMonth month) todos -- cfd is already sorted
+      (start, end)   = cfrToDayRange (CFRMonth month) todos
 
       go (x:xs) (y@(CF { date }):ys) a
         | x < date = let a' = a { date = x } :: CF
@@ -131,7 +142,10 @@ createCFDMonth month todos =
       go (x:xs) [] a = let a' = a { date = x } :: CF
                         in a' : go xs [] a'
       go [] _ _ = []
-   in CFDMonth $ go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
+
+    in CFDMonth { content        = go [start..end] cfd (CF { date = start, completed = 0, ongoing = 0})
+                , completedAfter = sum (Map.elems residue)
+                }
 
 
 data Model = Model
@@ -154,8 +168,13 @@ instance ToJSON Model where
 ----------------------------------------
 
 
-rangeQuery :: (Ord k, Enum k) => k -> k -> Map k a -> [a]
-rangeQuery s1 s2 m =
-  let (_, afterS1) = Map.split (pred s1) m
-      (inRange, _) = Map.split (succ s2) afterS1
-   in Map.elems inRange
+rangeQuery :: (Ord k, Enum k) => Maybe k -> Maybe k -> Map k a -> [a]
+rangeQuery Nothing Nothing  _ = []
+
+rangeQuery (Just s1) (Just s2)  m = let (_, afterS1) = Map.split (pred s1) m
+                                        (inRange, _) = Map.split (succ s2) afterS1
+                                     in Map.elems inRange
+rangeQuery (Just s1) Nothing  m = let (_, afterS1) = Map.split (pred s1) m
+                                   in Map.elems afterS1
+rangeQuery  Nothing (Just s2)  m = let (beforeS2, _) = Map.split (succ s2) m
+                                    in Map.elems beforeS2

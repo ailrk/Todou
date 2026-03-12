@@ -33,7 +33,7 @@ function renderCFD() {
         h("canvas", { id: "cfd-canvas-datapoints" })));
 }
 function renderCFDFooter(model) {
-    const last = model.cfd[model.cfd.length - 1];
+    const last = model.cfd.content[model.cfd.content.length - 1];
     if (!last)
         return h("footer", { class: "cfd-footer" });
     return (h("footer", { class: "cfd-footer" },
@@ -72,8 +72,8 @@ function setupCanvas(canvas, model) {
     const padding = 25;
     const w = rect.width;
     const h = rect.height;
-    const maxY = Math.max(...model.cfd.map(d => d.completed + d.ongoing));
-    const getX = (i) => padding + (i / (model.cfd.length - 1)) * (w - padding * 2);
+    const maxY = Math.max(...model.cfd.content.map(d => d.completed + d.ongoing));
+    const getX = (i) => padding + (i / (model.cfd.content.length - 1)) * (w - padding * 2);
     const getY = (v) => h - padding - (v / maxY) * (h - padding * 2);
     // "w" and "h" are the logical CSS pixels
     return {
@@ -109,7 +109,7 @@ async function drawCFD(model) {
         ctx.fillText(val.toString(), padding - 18, y);
     }
     // Vertical Grid Lines (X-Axis) - matching data points
-    cfd.forEach((val, i) => {
+    cfd.content.forEach((val, i) => {
         const x = Math.floor(getX(i)) + 0.5;
         ctx.moveTo(x, padding);
         ctx.lineTo(x, h - padding);
@@ -117,13 +117,13 @@ async function drawCFD(model) {
         ctx.fillStyle = "#777";
         if (i === 0)
             ctx.fillText(day, x - 5, h - padding + 10);
-        if (i === Math.trunc((cfd.length - 1) / 4))
+        if (i === Math.trunc((cfd.content.length - 1) / 4))
             ctx.fillText(day, x - 5, h - padding + 10);
-        if (i === Math.trunc((cfd.length - 1) / 2))
+        if (i === Math.trunc((cfd.content.length - 1) / 2))
             ctx.fillText(day, x - 5, h - padding + 10);
-        if (i === Math.trunc((cfd.length - 1) * 3 / 4))
+        if (i === Math.trunc((cfd.content.length - 1) * 3 / 4))
             ctx.fillText(day, x - 5, h - padding + 10);
-        if (i === cfd.length - 1)
+        if (i === cfd.content.length - 1)
             ctx.fillText(day, x - 5, h - padding + 10);
         if (i === pageDay - 1) {
             ctx.fillStyle = "#444";
@@ -135,8 +135,8 @@ async function drawCFD(model) {
     ctx.fillStyle = "rgba(52, 152, 219, 0.5)";
     ctx.beginPath();
     ctx.moveTo(getX(0), h - padding);
-    cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed + d.ongoing)));
-    ctx.lineTo(getX(cfd.length - 1), h - padding);
+    cfd.content.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed + d.ongoing)));
+    ctx.lineTo(getX(cfd.content.length - 1), h - padding);
     ctx.closePath();
     ctx.fill();
     // Draw "Completed" Area (The Green Part)
@@ -144,12 +144,12 @@ async function drawCFD(model) {
     ctx.fillStyle = "rgba(86, 218, 44, 0.5)";
     ctx.beginPath();
     ctx.moveTo(getX(0), h - padding); // Start at bottom
-    cfd.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed)));
-    ctx.lineTo(getX(cfd.length - 1), h - padding); // End at bottom
+    cfd.content.forEach((d, i) => ctx.lineTo(getX(i), getY(d.completed)));
+    ctx.lineTo(getX(cfd.content.length - 1), h - padding); // End at bottom
     ctx.closePath(); // This connects back to the start and fills
     ctx.fill();
     // Draw circles for Ongoing (Blue) data points
-    cfd.forEach((d, i) => {
+    cfd.content.forEach((d, i) => {
         ctx.fillStyle = "rgba(52, 152, 219, 1)"; // Fully opaque for better visibility
         ctx.beginPath();
         ctx.arc(getX(i), getY(d.completed + d.ongoing), 3, 0, Math.PI * 2);
@@ -158,12 +158,20 @@ async function drawCFD(model) {
     });
     // Draw circles for Completed (Green) data points
     ctx.fillStyle = "#2ecc71";
-    cfd.forEach((d, i) => {
+    cfd.content.forEach((d, i) => {
         ctx.beginPath();
         ctx.arc(getX(i), getY(d.completed), 3, 0, Math.PI * 2);
         ctx.closePath();
         ctx.fill();
     });
+    // Draw circle for tasks completed after this window
+    ctx.fillStyle = "#af2f2f6e";
+    let lastI = cfd.content.length - 1;
+    let last = cfd.content[lastI];
+    ctx.beginPath();
+    ctx.arc(getX(lastI), getY(last.completed + cfd.completedAfter), 3, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fill();
 }
 function drawTooltip(ctx, x, y, w, text) {
     const padding = 8;
@@ -202,22 +210,29 @@ function drawCFDDatapoints(canvas, model, evt) {
     const y = evt ? evt.clientY - rect.top : 0;
     // Clear the canvas before each redraw
     ctx.clearRect(0, 0, w, h);
-    const hit = (x, n, date) => {
+    const hit = (x, n, str) => {
         ctx.strokeStyle = "#fff";
         const y = getY(n);
-        drawTooltip(ctx, x, y, w, `${date}, ${n}`);
+        drawTooltip(ctx, x, y, w, `${str}, ${n}`);
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.closePath();
         ctx.stroke();
     };
-    cfd.forEach((d, i) => {
+    let lastI = cfd.content.length - 1;
+    let last = cfd.content[lastI];
+    cfd.content.forEach((d, i) => {
         let x0 = getX(i);
         let y0 = getY(d.completed);
         let y1 = getY(d.completed + d.ongoing);
+        let y2 = getY(d.completed + cfd.completedAfter);
         let f1 = x < x0 + deltaX && x > x0 - deltaX && y < y0 + deltaY && y > y0 - deltaY;
         let f2 = x < x0 + deltaX && x > x0 - deltaX && y < y1 + deltaY && y > y1 - deltaY;
-        if (f1 && f2) {
+        let f3 = x < x0 + deltaX && x > x0 - deltaX && y < y2 + deltaY && y > y2 - deltaY;
+        if (i === lastI && f3) {
+            hit(getX(lastI), last.completed + cfd.completedAfter, "total completed");
+        }
+        else if (f1 && f2) {
             if (Math.abs(y0 - y) < Math.abs(y1 - y)) {
                 hit(getX(i), d.completed, d.date);
             }
