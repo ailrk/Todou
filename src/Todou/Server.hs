@@ -190,7 +190,6 @@ server Options { port } handle = scotty port do
   get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
   get "/stat.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/stat.js")
   get "/lib.js"                       do javascript $(FileEmbed.embedFileRelative "data/todou/lib.js")
-  get "/sw.js"                        do javascript $(FileEmbed.embedFileRelative "data/todou/sw.js")
   get "/vdom.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/vdom.js")
   get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-192x192.png")
   get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-512x512.png")
