@@ -18,7 +18,6 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Codec.Compression.Zlib qualified as Zlib
 import Data.ByteString.Base64 qualified as B64
-import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 
 
@@ -172,9 +171,9 @@ getBufferDayRange Buffer { todos } =
 data Model = Model
   { entries       :: [Entry]
   , nextId        :: EntryId
-  , date          :: Text
+  , date          :: Day
   , presenceMap   :: ByteString
-  , firstDay      :: Text
+  , firstDay      :: Maybe Day
   }
 
 
@@ -201,9 +200,9 @@ todoToModel todo =
   Model
     { entries      = todo.entries
     , nextId       = EntryId (lastId + 1)
-    , date         = Text.pack (formatTime defaultTimeLocale  "%Y-%m-%d" todo.date)
+    , date         = todo.date
     , presenceMap  = ""
-    , firstDay     = ""
+    , firstDay     = Nothing
     }
   where
     EntryId lastId

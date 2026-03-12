@@ -9,12 +9,11 @@ import Data.Time.Calendar.Month (Month, pattern YearMonth, pattern MonthDay)
 import Amazonka.Data (ToJSON (..), (.=))
 import Data.Map qualified as Map
 import Data.Map (Map)
-import Todou.Domain.Todo (Todo (..), Entry (..))
+import Todou.Domain.Todo (Todo (..), Entry (..), b64EncodePresenceMap)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (catMaybes)
 import Data.List (sort, foldl')
 import Data.Containers.ListUtils (nubOrd)
-import Data.Text (Text)
 import Data.ByteString (ByteString)
 
 ----------------------------------------
@@ -207,17 +206,23 @@ instance ToJSON CFD where
 
 
 data Model = Model
-  { month       :: Month
-  , cfd         :: CFD
+  { date        :: Day
+  , cfd1Month   :: CFD
+  , cfd2Month   :: CFD
+  , cfd3Month   :: CFD
   , presenceMap :: ByteString
-  , firstDay    :: Text
+  , firstDay    :: Maybe Day
   }
 
 
 instance ToJSON Model where
   toJSON model = Aeson.object
-    [ "month" .= model.month
-    , "cfd"   .= model.cfd
+    [ "date"        .= model.date
+    , "cfd1Month"   .= model.cfd1Month
+    , "cfd2Month"   .= model.cfd2Month
+    , "cfd3Month"   .= model.cfd3Month
+    , "presenceMap" .= b64EncodePresenceMap model.presenceMap
+    , "firstDay"    .= model.firstDay
     ]
 
 

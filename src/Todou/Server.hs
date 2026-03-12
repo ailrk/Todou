@@ -189,6 +189,7 @@ server Options { port } handle = scotty port do
 
   get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
   get "/stat.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/stat.js")
+  get "/lib.js"                       do javascript $(FileEmbed.embedFileRelative "data/todou/lib.js")
   get "/sw.js"                        do javascript $(FileEmbed.embedFileRelative "data/todou/sw.js")
   get "/vdom.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/vdom.js")
   get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-192x192.png")
@@ -229,8 +230,8 @@ server Options { port } handle = scotty port do
       readMVar bufferMvar
 
     (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
-      Just (p, d) -> pure (p, formatDayYMD d)
-      Nothing -> pure ("", mempty)
+      Just (p, d) -> pure (p, Just d)
+      Nothing -> pure ("", Nothing)
 
     eModel <- case Map.lookup date buffer.todos of
       TodoLoaded todo -> do
@@ -260,14 +261,11 @@ server Options { port } handle = scotty port do
 
     getTimeZoneFromCookies >>= \case
       Just tz -> do
-        month <- queryParamMaybe @Month "month" >>= \case
+        date <- queryParamMaybe @Day "date" >>= \case
           Just d  -> pure d
           Nothing -> do
             localTime <- nowInlocalTime tz
-            let (MonthDay m _) = localTime.localDay
-            pure m
-
-        nmonths <- ((min 3) . fromMaybe 1) <$> queryParamMaybe @Int "n"
+            pure localTime.localDay
 
         let bufferMvar = getBufferMVar handle
 
@@ -276,17 +274,25 @@ server Options { port } handle = scotty port do
           readMVar bufferMvar
 
         (presenceMap, firstDay) <- liftIO $ getPresences buffer >>= \case
-          Just (p, d) -> pure (p, formatDayYMD d)
-          Nothing -> pure ("", mempty)
+          Just (p, d) -> pure (p, Just d)
+          Nothing -> pure ("", Nothing)
 
-        let start = iterate' pred month !! ((max nmonths 1) - 1)
-            end   = month
-            seg   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start..end] ]
-            model = Stat.Model { month       = month
-                               , cfd         = Stat.toCFD (CFRMonthRange start end) seg
-                               , presenceMap = presenceMap
-                               , firstDay    = firstDay
-                               }
+        let MonthDay month _ = date
+            months = iterate' pred month
+            start1 = months !! 0
+            start2 = months !! 1
+            start3 = months !! 2
+            end    = month
+            seg1   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start1..end] ]
+            seg2   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start2..end] ]
+            seg3   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start3..end] ]
+            model  = Stat.Model { date        = date
+                                , cfd1Month   = Stat.toCFD (CFRMonthRange start1 end) seg1
+                                , cfd2Month   = Stat.toCFD (CFRMonthRange start2 end) seg2
+                                , cfd3Month   = Stat.toCFD (CFRMonthRange start3 end) seg3
+                                , presenceMap = presenceMap
+                                , firstDay    = firstDay
+                                }
 
         html . Lucid.renderText $ statView model
       Nothing ->

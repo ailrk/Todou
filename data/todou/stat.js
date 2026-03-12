@@ -1,4 +1,5 @@
 import { newVdom, h } from "./vdom.js";
+import { base64ToBitSet, fmtYM } from "./lib.js";
 ;
 /*
  * Render
@@ -8,23 +9,37 @@ function renderStat(model) {
         h("nav", null,
             h("span", null,
                 " ",
-                model.month,
+                model.date.substring(0, 7),
                 " "),
-            h("span", { class: "back-icon", onclick: (_) => { window.history.back(); } })),
-        h("section", { class: "todoapp" }, renderCFDWidget(model)),
+            h("span", { class: "back-icon", onclick: (_) => { window.location.href = `/${model.date}`; } })),
+        h("section", { class: "todoapp pg-stat" },
+            renderCFDWidget(model),
+            renderCalendarWidget(model)),
         renderFooterInfo()));
 }
 function renderCFDWidget(model) {
-    return (h("section", { class: "cfd-widget" },
+    return (h("section", { class: "cfd-widget widget" },
         renderCFDControls(model),
         renderCFD(),
         renderCFDFooter(model)));
 }
 function renderCFDControls(model) {
-    function showNMonths(i) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('n', i.toString());
-        window.location.href = url.toString();
+    async function showNMonths(i) {
+        switch (i) {
+            case 1:
+                model.cfd = model.cfd1Month;
+                break;
+            case 2:
+                model.cfd = model.cfd2Month;
+                break;
+            case 3:
+                model.cfd = model.cfd3Month;
+                break;
+            default:
+                model.cfd = model.cfd1Month;
+                break;
+        }
+        await vdom.render();
     }
     return (h("header", { class: "cfd-controls" },
         h("div", { class: "dropdown" },
@@ -62,6 +77,62 @@ function renderCFDFooter(model) {
             h("strong", null, "Backlog:"),
             " ",
             last.ongoing)));
+}
+function renderCalendarWidget(model) {
+    return (h("section", { class: "calendar-widget widget" }, renderCalendar(model)));
+}
+function renderCalendar(model) {
+    const firstDay = new Date(model.calendar.year, model.calendar.month, 1);
+    const lastDay = new Date(model.calendar.year, model.calendar.month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const firstDayOfWeek = firstDay.getDay();
+    const formatted = fmtYM(model.calendar);
+    function today(i) {
+        let now = new Date();
+        if (model.calendar.year === now.getFullYear() &&
+            model.calendar.month === now.getMonth() &&
+            i === now.getDate())
+            return " cal-today";
+        else
+            return "";
+    }
+    function presence(i) {
+        if (model.firstDay === "")
+            return "";
+        let v = model.presence.view(i, model.calendar, model.firstDay);
+        let result = "";
+        if (v.presence) {
+            result += " cal-presence";
+        }
+        if (v.completed) {
+            result += " cal-completed";
+        }
+        return result;
+    }
+    return (h("div", { class: "calendar-content" },
+        h("span", { class: "calendar-header" },
+            h("button", { onclick: (_) => { prevCalendar(model); } }),
+            h("h1", null, formatted),
+            h("button", { onclick: (_) => { nextCalendar(model); } })),
+        h("ol", { class: "calendar" },
+            h("li", { class: "day-name" }, "Sun"),
+            " ",
+            h("li", { class: "day-name" }, "Mon"),
+            " ",
+            h("li", { class: "day-name" }, "Tue"),
+            h("li", { class: "day-name" }, "Wed"),
+            " ",
+            h("li", { class: "day-name" }, "Thu"),
+            " ",
+            h("li", { class: "day-name" }, "Fri"),
+            h("li", { class: "day-name" }, "Sat"),
+            Array
+                .from({ length: daysInMonth }, (_, i) => i + 1)
+                .map(i => {
+                return (h("li", { class: today(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
+                        window.location.href = `/${model.calendar.year}-${String(model.calendar.month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    } }, i));
+            }))));
 }
 function renderFooterInfo() {
     return (h("footer", { class: "info" },
@@ -263,6 +334,21 @@ function drawCFDDatapoints(canvas, model, evt) {
     });
 }
 /*
+ * Model
+ */
+async function nextCalendar(model) {
+    let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
+    model.calendar.year = date.getFullYear();
+    model.calendar.month = date.getMonth();
+    await vdom.render();
+}
+async function prevCalendar(model) {
+    let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
+    model.calendar.year = date.getFullYear();
+    model.calendar.month = date.getMonth();
+    await vdom.render();
+}
+/*
  * Main
  */
 async function main() {
@@ -272,6 +358,14 @@ async function main() {
     }
     let model = JSON.parse(el.textContent);
     el.remove();
+    console.log(model);
+    model.cfd = model.cfd1Month;
+    let date = new Date(model.date + "T00:00:00"); // use local time
+    model.calendar = {
+        year: date.getFullYear(),
+        month: date.getMonth()
+    };
+    model.presence = await base64ToBitSet(model.presenceMap);
     // Register top level event listeners
     document.body.addEventListener('wheel', (_) => {
         requestAnimationFrame(async () => await drawCFD(model));

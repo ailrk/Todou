@@ -1,4 +1,5 @@
 import { newVdom, VNode, h, VDom } from "./vdom.js";
+import { base64ToBitSet, fmtYM, PresenceView, YMD } from "./lib.js";
 
 
 interface CF {
@@ -17,8 +18,18 @@ interface CFD {
 
 
 interface Model {
-  month: string;
-  cfd:  CFD;
+  date: string;
+  cfd1Month: CFD;
+  cfd2Month: CFD;
+  cfd3Month: CFD;
+  presenceMap: string;
+  firstDay?: string;
+
+  // local
+  presence: PresenceView;
+  calendar: YMD;
+  showNMonthsCFD: number;
+  cfd: CFD;
 }
 
 
@@ -30,16 +41,17 @@ function renderStat(model: Model): VNode {
   return (
     <div class="todou-container" tabindex="-1">
       <nav>
-        <span> {model.month} </span>
+        <span> {model.date.substring(0, 7)} </span>
         <span
           class="back-icon"
-          onclick={(_: MouseEvent) => { window.history.back(); }}
+          onclick={(_: MouseEvent) => { window.location.href = `/${model.date}`; }}
         ></span>
       </nav>
-      <section class="todoapp">
+      <section class="todoapp pg-stat">
         {renderCFDWidget(model)}
+        {renderCalendarWidget(model)}
       </section>
-      { renderFooterInfo() }
+      {renderFooterInfo()}
     </div>
   );
 }
@@ -47,7 +59,7 @@ function renderStat(model: Model): VNode {
 
 function renderCFDWidget(model: Model): VNode {
   return (
-    <section class="cfd-widget">
+    <section class="cfd-widget widget">
       {renderCFDControls(model)}
       {renderCFD()}
       {renderCFDFooter(model)}
@@ -57,10 +69,14 @@ function renderCFDWidget(model: Model): VNode {
 
 
 function renderCFDControls(model: Model): VNode {
-  function showNMonths(i: number) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('n', i.toString());
-    window.location.href = url.toString();
+  async function showNMonths(i: number) {
+    switch (i) {
+        case 1: model.cfd  = model.cfd1Month; break;
+        case 2: model.cfd  = model.cfd2Month; break;
+        case 3: model.cfd  = model.cfd3Month; break;
+        default: model.cfd = model.cfd1Month; break;
+    }
+    await vdom.render();
   }
 
   return (
@@ -102,6 +118,84 @@ function renderCFDFooter(model: Model): VNode {
       <div><strong>Done:</strong> {last.completed}</div>
       <div><strong>Backlog:</strong> {last.ongoing}</div>
     </footer>
+  );
+}
+
+
+function renderCalendarWidget(model: Model): VNode {
+  return (
+    <section class="calendar-widget widget">
+      {renderCalendar(model)}
+    </section>
+  );
+}
+
+
+function renderCalendar(model: Model) {
+  const firstDay       = new Date(model.calendar.year, model.calendar.month, 1);
+  const lastDay        = new Date(model.calendar.year, model.calendar.month + 1, 0);
+  const daysInMonth    = lastDay.getDate();
+  const firstDayOfWeek = firstDay.getDay();
+  const formatted      = fmtYM(model.calendar);
+
+  function today(i: number) {
+    let now = new Date();
+    if (model.calendar.year === now.getFullYear() &&
+      model.calendar.month === now.getMonth() &&
+      i === now.getDate())
+      return " cal-today"
+    else
+      return ""
+  }
+
+  function presence(i: number) {
+    if (model.firstDay === "") return "";
+
+    let v = model.presence.view(i, model.calendar, model.firstDay);
+    let result = "";
+    if (v.presence) {
+      result += " cal-presence";
+    }
+
+    if (v.completed) {
+      result += " cal-completed";
+    }
+
+    return result;
+  }
+
+  return (
+    <div class="calendar-content">
+      <span class="calendar-header">
+        <button onclick={(_: MouseEvent) => { prevCalendar(model)} }/>
+        <h1>{formatted}</h1>
+        <button onclick={(_: MouseEvent) => { nextCalendar(model)} }/>
+      </span>
+
+      <ol class="calendar">
+        <li class="day-name">Sun</li> <li class="day-name">Mon</li> <li class="day-name">Tue</li>
+        <li class="day-name">Wed</li> <li class="day-name">Thu</li> <li class="day-name">Fri</li>
+        <li class="day-name">Sat</li>
+
+        {
+          Array
+          .from({ length: daysInMonth }, (_, i) => i + 1)
+          .map(i => {
+            return (
+              <li
+                class={today(i) + " " + presence(i)}
+                style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
+                onclick={(_: MouseEvent) => {
+                  window.location.href = `/${model.calendar.year}-${String(model.calendar.month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                }}>
+                  { i }
+              </li>
+            );
+          })
+        }
+
+      </ol>
+    </div>
   );
 }
 
@@ -360,6 +454,27 @@ function drawCFDDatapoints(canvas: HTMLCanvasElement, model: Model, evt?: MouseE
 
 
 /*
+ * Model
+ */
+
+
+async function nextCalendar(model: Model) {
+  let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
+  model.calendar.year = date.getFullYear();
+  model.calendar.month = date.getMonth();
+  await vdom.render()
+}
+
+
+async function prevCalendar(model: Model) {
+  let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
+  model.calendar.year = date.getFullYear();
+  model.calendar.month = date.getMonth();
+  await vdom.render()
+}
+
+
+/*
  * Main
  */
 
@@ -371,6 +486,18 @@ async function main() {
   }
 
   let model: Model = JSON.parse(el.textContent!); el.remove();
+  console.log(model)
+
+  model.cfd = model.cfd1Month;
+
+  let date = new Date(model.date + "T00:00:00"); // use local time
+
+  model.calendar = {
+    year: date.getFullYear(),
+    month: date.getMonth()
+  }
+
+  model.presence = await base64ToBitSet(model.presenceMap);
 
   // Register top level event listeners
   document.body.addEventListener('wheel', (_: WheelEvent) => {
