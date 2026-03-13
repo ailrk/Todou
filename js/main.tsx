@@ -12,7 +12,12 @@ interface Entry {
   id: EntryId;
   description: string;
   completedDate: string | null;
-  editing: boolean;
+  detail: string;
+  tags: string[];
+
+  // local
+  editingDescription: boolean;
+  editingDetail: boolean;
 }
 
 function isCompleted(e: Entry): boolean { return e.completedDate !== null; }
@@ -31,8 +36,10 @@ interface Model {
   visibility: Visibility;
   field: string;
   showCalendar: boolean;
+  showDetail: boolean;
   presence: PresenceView;
-  calendar: YMD;
+  calendar: YMD;            // current calendar date
+  entry: Entry | null;      // current focused entry
 }
 
 
@@ -57,7 +64,8 @@ function renderTodou(model: Model): VNode {
         {renderControls(model)}
       </section>
       { renderFooterInfo() }
-      { renderCalendar(model) }
+      { model.showCalendar ? renderCalendarModal(model) : null }
+      { model.showDetail   ? renderDetailModal(model)   : null }
     </div>
   );
 }
@@ -174,50 +182,173 @@ function renderFooterInfo(): VNode {
 
 
 function renderEntry(model: Model, entry: Entry): VNode {
-  const classes = [
-    isCompleted(entry) ? "completed" : "",
-    entry.editing ? "editing" : ""
-  ].filter(Boolean).join(" ");
+  const classes = [ isCompleted(entry) ? "completed" : "" ].filter(Boolean).join(" ");
 
   return (
-    <li key={`todo-${entry.id}`} class={classes}>
-      <div class="view">
-        <input
-          class="toggle"
-          type="checkbox"
-          checked={isCompleted(entry)}
-          onclick={() => {
-            let formatted   = new Date().toISOString().split('T')[0];
-            let completedDate = isCompleted(entry) ? null : formatted;
-            checkEntry(model, entry.id, completedDate)
-          }} />
-        <label ondblclick={() => editingEntry(model, entry.id, true)}>{entry.description}</label>
+    <li key={`todo-${entry.id}`} class={"entry-description " + classes}>
+      <input
+        class="toggle"
+        type="checkbox"
+        checked={isCompleted(entry)}
+        onclick={() => {
+          let formatted   = new Date().toISOString().split('T')[0];
+          let completedDate = isCompleted(entry) ? null : formatted;
+          checkEntry(model, entry.id, completedDate)
+        }} />
+        <label onclick={() => {
+          model.entry = entry;
+          toggleDetail(model);
+        }}>{entry.description}</label>
+        <button class="destroy" onclick={() => deleteEntry(model, entry.id)} />
+      </li>
+    );
+}
 
-        <button
-          class="destroy"
-          onclick={() => deleteEntry(model, entry.id)} />
-      </div>
 
-      <div class="edit">
-        <textarea
-          name="title"
-          value={entry.description}
-          id={`todo-${entry.id}`}
-          onkeydown={(ev: KeyboardEvent) => {
-            if (ev.key === "Enter" && !ev.shiftKey) editingEntry(model, entry.id, false);
-          }}
-          oninput={(ev: Event) => {
-            updateEntry(model, entry.id, (ev.target as HTMLInputElement).value);
-          }}
-          onblur={() => editingEntry(model, entry.id, false)}
-        />
+function renderDetailDescription(model: Model) {
+  if (model.entry === null) return "No Entry";
+  let entry = model.entry;
+
+  const classes =
+    !model.entry ? "" :
+    [ isCompleted(model.entry) ? "completed" : "",
+      model.entry.editingDescription ? "editing" : ""
+    ].filter(Boolean).join(" ");
+
+  function onCheck() {
+    let formatted     = new Date().toISOString().split('T')[0];
+    let completedDate = isCompleted(entry) ? null : formatted;
+    checkEntry(model, entry.id, completedDate)
+  }
+
+  function onClick() {
+    console.log('desc click')
+    editingEntryDescription(model, entry.id, true);
+  }
+
+  function onKeydown(ev: KeyboardEvent) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      editingEntryDescription(model, entry.id, false);
+    }
+  }
+
+  function onInput(ev: Event) {
+    updateEntry(model, entry.id, { description: (ev.target as HTMLInputElement).value });
+  }
+
+  function onBlur() {
+    console.log('desc blur')
+    editingEntryDescription(model, entry.id, false);
+  }
+
+  function onDestroy() {
+    deleteEntry(model, entry.id);
+    toggleDetail(model, false);
+  }
+
+  return (
+    <div class={ "entry-description edit " + classes }>
+      <input
+        class="toggle"
+        type="checkbox"
+        checked={isCompleted(entry)}
+        onclick={onCheck} />
+      <textarea
+        name="description"
+        value={entry.description}
+        id={`todo-description-${entry.id}`}
+        onclick={onClick}
+        onkeydown={onKeydown}
+        oninput={onInput}
+        onblur={onBlur}
+      />
+      <button class="destroy" onclick={onDestroy} />
+    </div>
+    );
+}
+
+
+function renderDetail(model: Model) {
+  if (model.entry === null) return "No Entry";
+  let entry = model.entry;
+
+  const classes =
+    !model.entry ? "" :
+    [ model.entry.editingDetail ? "editing" : ""
+    ].filter(Boolean).join(" ");
+
+  function onClick() {
+    console.log('detail onclick')
+    editingEntryDetail(model, entry.id, true);
+  }
+
+  function onKeydown(ev: KeyboardEvent) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      editingEntryDetail(model, entry.id, false);
+    }
+  }
+
+  function onInput(ev: Event) {
+    updateEntry(model, entry.id, { detail: (ev.target as HTMLInputElement).value } );
+  }
+
+  function onBlur() {
+    console.log('detail blur')
+    editingEntryDetail(model, entry.id, false);
+  }
+
+  return (
+    <div class={ "entry-detail edit " + classes}>
+      <textarea
+        name="detail"
+        value={entry.detail}
+        id={`todo-detail-${entry.id}`}
+        onclick={onClick}
+        onkeydown={onKeydown}
+        oninput={onInput}
+        onblur={onBlur} />
+    </div>
+  )
+}
+
+
+function renderDetailModal(model: Model): VNode {
+  if (model.entry === null) {
+    return "Empty Entry";
+  }
+
+  return (
+    <div
+      class="detail-modal modal"
+      tabindex="-1"
+      onkeydown={(ev: KeyboardEvent) => {
+        if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+          ev.stopPropagation();
+        }
+      }}
+      onclick={(ev: MouseEvent) => {
+        if (document.querySelector('.detail-content')!.contains(ev.target as Node)) return;
+        toggleDetail(model, false)
+
+      }}>
+      <div class="detail-content">
+        <div class="detail-header">
+          { renderDetailDescription(model) }
+          <div class="detail-tags">
+          </div>
+        </div>
+        <div class="detail-body">
+          { renderDetail(model) }
+        </div>
       </div>
-    </li>
+    </div>
   );
 }
 
 
-function renderCalendar(model: Model) {
+function renderCalendarModal(model: Model): VNode {
   const firstDay       = new Date(model.calendar.year, model.calendar.month, 1);
   const lastDay        = new Date(model.calendar.year, model.calendar.month + 1, 0);
   const daysInMonth    = lastDay.getDate();
@@ -225,20 +356,22 @@ function renderCalendar(model: Model) {
   const formatted      = fmtYM(model.calendar);
   const date           = new Date (model.date + "T00:00:00");
 
+  function dateEq(i: number, calendar: YMD, d: Date) {
+    return calendar.year === d.getFullYear() &&
+      calendar.month === d.getMonth() &&
+      i === d.getDate();
+  }
+
   function today(i: number) {
     let now = new Date();
-    if (model.calendar.year === now.getFullYear() &&
-      model.calendar.month === now.getMonth() &&
-      i === now.getDate())
+    if (dateEq(i, model.calendar, now))
       return " cal-today"
     else
       return ""
   }
 
   function current(i: number) {
-    if (model.calendar.year === date.getFullYear() &&
-      model.calendar.month === date.getMonth() &&
-      date.getDate() === i)
+    if (dateEq(i, model.calendar, date))
       return " cal-current"
     else
       return ""
@@ -246,9 +379,7 @@ function renderCalendar(model: Model) {
 
   function presence(i: number) {
     // immediately set current non-mempty todo as presence
-    if (model.calendar.year === date.getFullYear() &&
-      model.calendar.month === date.getMonth() &&
-      i === date.getDate()) {
+    if (dateEq(i, model.calendar, date)) {
       if (model.entries.length > 0) {
         if (model.entries.every(isCompleted)) {
           return " cal-completed";
@@ -272,10 +403,32 @@ function renderCalendar(model: Model) {
     return result;
   }
 
+  function jump(i: number) {
+    let url = "";
+    url += `/${model.calendar.year}-`;
+    url += `${String(model.calendar.month+1).padStart(2, '0')}-`;
+    url += `${String(i).padStart(2, '0')}`;
+    window.location.href = url;
+  }
+
+  function renderDay(i: number) {
+    return (
+      <li
+        class={today(i) + " " + current(i) + " " + presence(i)}
+        style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
+        onclick={() => jump(i)}>
+        { i }
+      </li>
+    );
+  }
+
+  function renderDays() {
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1).map(renderDay)
+  }
+
   return (
     <div
-      class="calendar-modal"
-      hidden={!model.showCalendar}
+      class="calendar-modal modal"
       tabindex="-1"
       onkeydown={(ev: KeyboardEvent) => {
         // Prevent the page from scrolling when using arrows
@@ -308,24 +461,7 @@ function renderCalendar(model: Model) {
           <li class="day-name">Sun</li> <li class="day-name">Mon</li> <li class="day-name">Tue</li>
           <li class="day-name">Wed</li> <li class="day-name">Thu</li> <li class="day-name">Fri</li>
           <li class="day-name">Sat</li>
-
-          {
-            Array
-            .from({ length: daysInMonth }, (_, i) => i + 1)
-            .map(i => {
-              return (
-                <li
-                  class={today(i) + " " + current(i) + " " + presence(i)}
-                  style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
-                  onclick={(_: MouseEvent) => {
-                    window.location.href = `/${model.calendar.year}-${String(model.calendar.month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                  }}>
-                    { i }
-                </li>
-              );
-            })
-          }
-
+          { renderDays() }
         </ol>
       </div>
     </div>
@@ -338,12 +474,21 @@ function renderCalendar(model: Model) {
  */
 
 
+interface EditingDelta {
+  description?: string;
+  detail?: string;
+}
+
+
 async function addEntry(model: Model) {
   if (model.field === "") return;
   let newEntry = {
       id: model.nextId,
       description: model.field,
-      editing: false,
+      detail: "",
+      tags: [],
+      editingDescription: false,
+      editingDetail: false,
       completedDate: null
     }
   await addEntryAPI(model.date, newEntry.id, newEntry.description);
@@ -360,28 +505,45 @@ async function updateField(model: Model, str: string) {
 }
 
 
-async function editingEntry(model: Model, id: EntryId, isEditing: boolean) {
+async function editingEntryDescription(model: Model, id: EntryId, isEditing: boolean = false) {
   let entry = model.entries.filter(e => e.id === id).at(0)
   if (!entry) return;
 
-  entry.editing = isEditing;
+  entry.editingDescription = isEditing;
+
   if (!isEditing) {
-    await updateEntryAPI(model.date, id, entry.completedDate, entry.description)
+    await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail)
   }
 
   await vdom.render();
-
-  let ele = document.getElementById(`todo-${id}`);
-  if (ele) {
-    ele.focus();
-  }
 }
 
 
-async function updateEntry(model: Model, id: EntryId, task: string) {
+
+async function editingEntryDetail(model: Model, id: EntryId, isEditing: boolean = false) {
+  let entry = model.entries.filter(e => e.id === id).at(0)
+  if (!entry) return;
+
+  entry.editingDetail = isEditing;
+
+  if (!isEditing) {
+    await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail)
+  }
+
+  await vdom.render();
+}
+
+
+async function updateEntry(model: Model, id: EntryId, delta: EditingDelta) {
   model.entries.forEach(entry => {
     if (entry.id === id) {
-      entry.description = task;
+      if (delta.description) {
+        entry.description = delta.description;
+      }
+
+      if (delta.detail) {
+        entry.detail = delta.detail;
+      }
     }
   })
   await vdom.render();
@@ -453,6 +615,24 @@ async function toggleCalendar(model: Model, show?: boolean) {
 }
 
 
+async function toggleDetail(model: Model, show?: boolean) {
+  if (show !== undefined) {
+    model.showDetail = show;
+  } else {
+    model.showDetail = !model.showDetail;
+  }
+
+  await vdom.render();
+
+  if (model.showDetail) {
+    const el = document.querySelector('.detail-modal');
+    if (el !== null) {
+      (el as HTMLElement).focus();
+    }
+  }
+}
+
+
 async function nextCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
   model.calendar.year = date.getFullYear();
@@ -505,17 +685,24 @@ async function addEntryAPI(date: string, id: number, description: string) {
 }
 
 
-async function updateEntryAPI(date: string, id: number, completedDate: string | null, description?: string) {
-  const params = new URLSearchParams();
+async function updateEntryAPI(date: string, id: number, completedDate: string | null, description?: string, detail?: string) {
+  const formData = new URLSearchParams();
   if (completedDate !== null) {
-    params.set("completedDate", completedDate)
+    formData.set("completedDate", completedDate)
   }
 
   if (description !== undefined) {
-    params.set("description", String(description));
+    formData.set("description", String(description));
   }
 
-  let result = await fetch(`/entry/update/${date}/${id}?${params}`, { method: "PUT" });
+  if (detail !== undefined) {
+    formData.set("detail", String(detail));
+  }
+
+  let result = await fetch(`/entry/update/${date}/${id}`, {
+    method: "PUT" ,
+    body: formData
+  });
   if (!result.ok) {
     throw new Error (`HTTP Error ${result.status}`);
   }
@@ -524,16 +711,16 @@ async function updateEntryAPI(date: string, id: number, completedDate: string | 
 
 
 async function updateEntriesAPI(date: string, completedDate: string | null, description?: string) {
-  const params = new URLSearchParams();
+  const formData = new URLSearchParams();
   if (completedDate !== null) {
-    params.set("completedDate", completedDate)
+    formData.set("completedDate", completedDate)
   }
 
   if (description !== undefined) {
-    params.set("description", String(description));
+    formData.set("description", String(description));
   }
 
-  let result = await fetch(`/entry/update/${date}/?${params}`, { method: "PUT" });
+  let result = await fetch(`/entry/update/${date}`, { method: "PUT", body: formData });
   if (!result.ok) {
     throw new Error (`HTTP Error ${result.status}`);
   }
@@ -568,9 +755,11 @@ async function main() {
     year: pathDate.getFullYear(),
     month: pathDate.getMonth()
   }
+  model.entry        = null;
   model.field        = "";
   model.visibility   = "All";
   model.showCalendar = false;
+  model.showDetail   = false;
   model.presence     = await base64ToBitSet(model.presenceMap);
 
   console.log('main', model);

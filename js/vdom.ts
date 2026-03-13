@@ -24,6 +24,16 @@ first, and fall back to index-based comparison if no key is provided.
 type VKey = string | number;
 
 
+export interface Ref<T = any> {
+  current: T | null;
+}
+
+
+export function createRef<T>(): Ref<T> {
+  return { current: null };
+}
+
+
 /* A Virtual dom tree is a rose tree with unbounded children  */
 export type VNode
   = string
@@ -31,6 +41,7 @@ export type VNode
       attrs?: Record<string, any>,
       children?: VNode[],
       key?: VKey,
+      ref?: Ref,
       _listeners?: Record<string, EventListener>
     };
 
@@ -65,6 +76,11 @@ function createElement(vnode: VNode): Node {
   if (typeof vnode === 'string') return document.createTextNode(vnode);
 
   const el = document.createElement(vnode.tag);
+
+  if (vnode.ref) {
+    vnode.ref.current = el;
+  }
+
   if (vnode.attrs) {
     for (const [k, v] of Object.entries(vnode.attrs)) {
       if (keyIsHandler(k, v)) {
@@ -96,11 +112,11 @@ function createElement(vnode: VNode): Node {
 /** Update an element. The existing element is the `index`th child of the parent. */
 function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, index = 0) {
 
-  if (!oldVNode) {
+  if (oldVNode === null || oldVNode === undefined) {
     if (newVNode) {
       parent.appendChild(createElement(newVNode));
     } else {
-      console.error("[vdom] can't diff vdom without a vnode");
+      console.error("[vdom] can't diff vdom without a vnode", newVNode);
     }
     return;
   }
@@ -109,6 +125,10 @@ function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, 
 
   if (!newVNode) {
     if (existing) {
+      if (existing instanceof HTMLElement) {
+        removeListeners(existing, oldVNode);
+      }
+      cleanupVNode(oldVNode);
       parent.removeChild(existing);
     }
     return;
@@ -116,13 +136,23 @@ function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, 
 
   // Simple text node
   if (typeof newVNode === 'string' && typeof oldVNode === 'string') {
-    if (newVNode !== oldVNode) existing.textContent = newVNode;
+    if (newVNode !== oldVNode) {
+      if (existing) {
+        existing.textContent = newVNode;
+      } else {
+        parent.textContent = newVNode;
+      }
+    }
     return;
   }
 
   // Update attrs
   if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.tag === oldVNode.tag) {
     let el = existing as HTMLElement;
+
+    if (newVNode.ref) {
+      newVNode.ref.current = el;
+    }
 
     for (const [k, v] of Object.entries(newVNode.attrs || {})) {
       if (v == null) {
@@ -158,6 +188,7 @@ function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, 
   }
 
   // Replace completely
+  cleanupVNode(oldVNode); // Clear old refs
   parent.replaceChild(createElement(newVNode), existing);
 }
 
@@ -203,12 +234,39 @@ function updateChildren(parent: HTMLElement, newChildren: VNode[], oldChildren: 
   })
 
   // Remove leftovers
-  for (const { ref } of oldKeyMap.values()) {
+  for (const { vnode, ref } of oldKeyMap.values()) {
+    cleanupVNode(vnode);
     parent.removeChild(ref)
   }
 
   for (const action of pendingActions) {
     action()
+  }
+}
+
+
+/* Cleanup event listeners. */
+function removeListeners(el: HTMLElement, vnode: VNode) {
+  if (typeof vnode === 'string' || !vnode._listeners) return;
+
+  for (const [k, v] of Object.entries(vnode._listeners)) {
+    el.removeEventListener(k.slice(2).toLowerCase(), v);
+  }
+}
+
+
+/* Cleanup ref to avoid dangling refs. */
+function cleanupVNode(vnode?: VNode) {
+  if (!vnode || typeof vnode === 'string') return;
+
+  // Clear the ref if it exists
+  if (vnode.ref) {
+    vnode.ref.current = null;
+  }
+
+  // Recursively cleanup children
+  if (vnode.children) {
+    vnode.children.forEach(cleanupVNode);
   }
 }
 
@@ -228,6 +286,7 @@ function keyIsProperty(k: string): boolean {
     case "contentEditable":
     case "readOnly":
     case "hidden":
+    case "ref":
       return true;
     default:
       return false;
@@ -257,6 +316,7 @@ export function h(tag: string, props: Record<string, any | null>, ...children: a
     tag,
     attrs: props || {},
     children: flatChildren.length > 0 ? flatChildren : undefined,
-    key: props?.key
+    key: props?.key,
+    ref: props?.ref
   };
 }

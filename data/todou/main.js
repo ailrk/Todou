@@ -17,7 +17,8 @@ function renderTodou(model) {
             renderEntries(model),
             renderControls(model)),
         renderFooterInfo(),
-        renderCalendar(model)));
+        model.showCalendar ? renderCalendarModal(model) : null,
+        model.showDetail ? renderDetailModal(model) : null));
 }
 function renderInput(model) {
     return (h("header", null,
@@ -74,56 +75,132 @@ function renderFooterInfo() {
         h("p", null, "Double click to edit a todo")));
 }
 function renderEntry(model, entry) {
-    const classes = [
-        isCompleted(entry) ? "completed" : "",
-        entry.editing ? "editing" : ""
-    ].filter(Boolean).join(" ");
-    return (h("li", { key: `todo-${entry.id}`, class: classes },
-        h("div", { class: "view" },
-            h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: () => {
-                    let formatted = new Date().toISOString().split('T')[0];
-                    let completedDate = isCompleted(entry) ? null : formatted;
-                    checkEntry(model, entry.id, completedDate);
-                } }),
-            h("label", { ondblclick: () => editingEntry(model, entry.id, true) }, entry.description),
-            h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })),
-        h("div", { class: "edit" },
-            h("textarea", { name: "title", value: entry.description, id: `todo-${entry.id}`, onkeydown: (ev) => {
-                    if (ev.key === "Enter" && !ev.shiftKey)
-                        editingEntry(model, entry.id, false);
-                }, oninput: (ev) => {
-                    updateEntry(model, entry.id, ev.target.value);
-                }, onblur: () => editingEntry(model, entry.id, false) }))));
+    const classes = [isCompleted(entry) ? "completed" : ""].filter(Boolean).join(" ");
+    return (h("li", { key: `todo-${entry.id}`, class: "entry-description " + classes },
+        h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: () => {
+                let formatted = new Date().toISOString().split('T')[0];
+                let completedDate = isCompleted(entry) ? null : formatted;
+                checkEntry(model, entry.id, completedDate);
+            } }),
+        h("label", { onclick: () => {
+                model.entry = entry;
+                toggleDetail(model);
+            } }, entry.description),
+        h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })));
 }
-function renderCalendar(model) {
+function renderDetailDescription(model) {
+    if (model.entry === null)
+        return "No Entry";
+    let entry = model.entry;
+    const classes = !model.entry ? "" :
+        [isCompleted(model.entry) ? "completed" : "",
+            model.entry.editingDescription ? "editing" : ""
+        ].filter(Boolean).join(" ");
+    function onCheck() {
+        let formatted = new Date().toISOString().split('T')[0];
+        let completedDate = isCompleted(entry) ? null : formatted;
+        checkEntry(model, entry.id, completedDate);
+    }
+    function onClick() {
+        console.log('desc click');
+        editingEntryDescription(model, entry.id, true);
+    }
+    function onKeydown(ev) {
+        if (ev.key === "Enter" && !ev.shiftKey) {
+            ev.preventDefault();
+            editingEntryDescription(model, entry.id, false);
+        }
+    }
+    function onInput(ev) {
+        updateEntry(model, entry.id, { description: ev.target.value });
+    }
+    function onBlur() {
+        console.log('desc blur');
+        editingEntryDescription(model, entry.id, false);
+    }
+    function onDestroy() {
+        deleteEntry(model, entry.id);
+        toggleDetail(model, false);
+    }
+    return (h("div", { class: "entry-description edit " + classes },
+        h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: onCheck }),
+        h("textarea", { name: "description", value: entry.description, id: `todo-description-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur }),
+        h("button", { class: "destroy", onclick: onDestroy })));
+}
+function renderDetail(model) {
+    if (model.entry === null)
+        return "No Entry";
+    let entry = model.entry;
+    const classes = !model.entry ? "" :
+        [model.entry.editingDetail ? "editing" : ""
+        ].filter(Boolean).join(" ");
+    function onClick() {
+        console.log('detail onclick');
+        editingEntryDetail(model, entry.id, true);
+    }
+    function onKeydown(ev) {
+        if (ev.key === "Enter" && !ev.shiftKey) {
+            ev.preventDefault();
+            editingEntryDetail(model, entry.id, false);
+        }
+    }
+    function onInput(ev) {
+        updateEntry(model, entry.id, { detail: ev.target.value });
+    }
+    function onBlur() {
+        console.log('detail blur');
+        editingEntryDetail(model, entry.id, false);
+    }
+    return (h("div", { class: "entry-detail edit " + classes },
+        h("textarea", { name: "detail", value: entry.detail, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
+}
+function renderDetailModal(model) {
+    if (model.entry === null) {
+        return "Empty Entry";
+    }
+    return (h("div", { class: "detail-modal modal", tabindex: "-1", onkeydown: (ev) => {
+            if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
+                ev.stopPropagation();
+            }
+        }, onclick: (ev) => {
+            if (document.querySelector('.detail-content').contains(ev.target))
+                return;
+            toggleDetail(model, false);
+        } },
+        h("div", { class: "detail-content" },
+            h("div", { class: "detail-header" },
+                renderDetailDescription(model),
+                h("div", { class: "detail-tags" })),
+            h("div", { class: "detail-body" }, renderDetail(model)))));
+}
+function renderCalendarModal(model) {
     const firstDay = new Date(model.calendar.year, model.calendar.month, 1);
     const lastDay = new Date(model.calendar.year, model.calendar.month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const firstDayOfWeek = firstDay.getDay();
     const formatted = fmtYM(model.calendar);
     const date = new Date(model.date + "T00:00:00");
+    function dateEq(i, calendar, d) {
+        return calendar.year === d.getFullYear() &&
+            calendar.month === d.getMonth() &&
+            i === d.getDate();
+    }
     function today(i) {
         let now = new Date();
-        if (model.calendar.year === now.getFullYear() &&
-            model.calendar.month === now.getMonth() &&
-            i === now.getDate())
+        if (dateEq(i, model.calendar, now))
             return " cal-today";
         else
             return "";
     }
     function current(i) {
-        if (model.calendar.year === date.getFullYear() &&
-            model.calendar.month === date.getMonth() &&
-            date.getDate() === i)
+        if (dateEq(i, model.calendar, date))
             return " cal-current";
         else
             return "";
     }
     function presence(i) {
         // immediately set current non-mempty todo as presence
-        if (model.calendar.year === date.getFullYear() &&
-            model.calendar.month === date.getMonth() &&
-            i === date.getDate()) {
+        if (dateEq(i, model.calendar, date)) {
             if (model.entries.length > 0) {
                 if (model.entries.every(isCompleted)) {
                     return " cal-completed";
@@ -143,7 +220,20 @@ function renderCalendar(model) {
         }
         return result;
     }
-    return (h("div", { class: "calendar-modal", hidden: !model.showCalendar, tabindex: "-1", onkeydown: (ev) => {
+    function jump(i) {
+        let url = "";
+        url += `/${model.calendar.year}-`;
+        url += `${String(model.calendar.month + 1).padStart(2, '0')}-`;
+        url += `${String(i).padStart(2, '0')}`;
+        window.location.href = url;
+    }
+    function renderDay(i) {
+        return (h("li", { class: today(i) + " " + current(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: () => jump(i) }, i));
+    }
+    function renderDays() {
+        return Array.from({ length: daysInMonth }, (_, i) => i + 1).map(renderDay);
+    }
+    return (h("div", { class: "calendar-modal modal", tabindex: "-1", onkeydown: (ev) => {
             // Prevent the page from scrolling when using arrows
             if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
                 ev.preventDefault();
@@ -179,24 +269,18 @@ function renderCalendar(model) {
                 " ",
                 h("li", { class: "day-name" }, "Fri"),
                 h("li", { class: "day-name" }, "Sat"),
-                Array
-                    .from({ length: daysInMonth }, (_, i) => i + 1)
-                    .map(i => {
-                    return (h("li", { class: today(i) + " " + current(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
-                            window.location.href = `/${model.calendar.year}-${String(model.calendar.month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                        } }, i));
-                })))));
+                renderDays()))));
 }
-/*
- * Model
- */
 async function addEntry(model) {
     if (model.field === "")
         return;
     let newEntry = {
         id: model.nextId,
         description: model.field,
-        editing: false,
+        detail: "",
+        tags: [],
+        editingDescription: false,
+        editingDetail: false,
         completedDate: null
     };
     await addEntryAPI(model.date, newEntry.id, newEntry.description);
@@ -209,24 +293,35 @@ async function updateField(model, str) {
     model.field = str;
     await vdom.render();
 }
-async function editingEntry(model, id, isEditing) {
+async function editingEntryDescription(model, id, isEditing = false) {
     let entry = model.entries.filter(e => e.id === id).at(0);
     if (!entry)
         return;
-    entry.editing = isEditing;
+    entry.editingDescription = isEditing;
     if (!isEditing) {
-        await updateEntryAPI(model.date, id, entry.completedDate, entry.description);
+        await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail);
     }
     await vdom.render();
-    let ele = document.getElementById(`todo-${id}`);
-    if (ele) {
-        ele.focus();
-    }
 }
-async function updateEntry(model, id, task) {
+async function editingEntryDetail(model, id, isEditing = false) {
+    let entry = model.entries.filter(e => e.id === id).at(0);
+    if (!entry)
+        return;
+    entry.editingDetail = isEditing;
+    if (!isEditing) {
+        await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail);
+    }
+    await vdom.render();
+}
+async function updateEntry(model, id, delta) {
     model.entries.forEach(entry => {
         if (entry.id === id) {
-            entry.description = task;
+            if (delta.description) {
+                entry.description = delta.description;
+            }
+            if (delta.detail) {
+                entry.detail = delta.detail;
+            }
         }
     });
     await vdom.render();
@@ -283,6 +378,21 @@ async function toggleCalendar(model, show) {
         }
     }
 }
+async function toggleDetail(model, show) {
+    if (show !== undefined) {
+        model.showDetail = show;
+    }
+    else {
+        model.showDetail = !model.showDetail;
+    }
+    await vdom.render();
+    if (model.showDetail) {
+        const el = document.querySelector('.detail-modal');
+        if (el !== null) {
+            el.focus();
+        }
+    }
+}
 async function nextCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
     model.calendar.year = date.getFullYear();
@@ -322,29 +432,35 @@ async function addEntryAPI(date, id, description) {
     }
     return result.json();
 }
-async function updateEntryAPI(date, id, completedDate, description) {
-    const params = new URLSearchParams();
+async function updateEntryAPI(date, id, completedDate, description, detail) {
+    const formData = new URLSearchParams();
     if (completedDate !== null) {
-        params.set("completedDate", completedDate);
+        formData.set("completedDate", completedDate);
     }
     if (description !== undefined) {
-        params.set("description", String(description));
+        formData.set("description", String(description));
     }
-    let result = await fetch(`/entry/update/${date}/${id}?${params}`, { method: "PUT" });
+    if (detail !== undefined) {
+        formData.set("detail", String(detail));
+    }
+    let result = await fetch(`/entry/update/${date}/${id}`, {
+        method: "PUT",
+        body: formData
+    });
     if (!result.ok) {
         throw new Error(`HTTP Error ${result.status}`);
     }
     return result.json();
 }
 async function updateEntriesAPI(date, completedDate, description) {
-    const params = new URLSearchParams();
+    const formData = new URLSearchParams();
     if (completedDate !== null) {
-        params.set("completedDate", completedDate);
+        formData.set("completedDate", completedDate);
     }
     if (description !== undefined) {
-        params.set("description", String(description));
+        formData.set("description", String(description));
     }
-    let result = await fetch(`/entry/update/${date}/?${params}`, { method: "PUT" });
+    let result = await fetch(`/entry/update/${date}`, { method: "PUT", body: formData });
     if (!result.ok) {
         throw new Error(`HTTP Error ${result.status}`);
     }
@@ -372,9 +488,11 @@ async function main() {
         year: pathDate.getFullYear(),
         month: pathDate.getMonth()
     };
+    model.entry = null;
     model.field = "";
     model.visibility = "All";
     model.showCalendar = false;
+    model.showDetail = false;
     model.presence = await base64ToBitSet(model.presenceMap);
     console.log('main', model);
     document.body.addEventListener('keydown', (ev) => {

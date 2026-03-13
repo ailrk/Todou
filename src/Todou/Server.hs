@@ -39,7 +39,7 @@ import Lucid qualified
 import Network.HTTP.Types (status500)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Text.Read (readMaybe)
-import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header)
+import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header, formParamMaybe)
 import Web.Cookie (parseCookies)
 import Data.Time.Calendar.Month (pattern MonthDay, Month)
 import Todou.Domain.Stat (CFR (..), createCFSegmentFromMonth)
@@ -123,7 +123,7 @@ withTodouHead content =
       meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
       meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
       meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
-      meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-moble-web-app-title", content_ "Todou"]
       meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
       link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
       link_ [ rel_ "stylesheet", href_ "/main.css" ]
@@ -307,6 +307,8 @@ server Options { port } handle = scotty port do
           Entry
             { entryId       = entryId
             , description   = description
+            , detail        = ""
+            , tags          = []
             , completedDate = Nothing
             }
     liftIO $ loadTodo handle date >>= \case
@@ -332,12 +334,14 @@ server Options { port } handle = scotty port do
   put "/entry/update/:date/:id" do
     date         <- captureParam @Day "date"
     mEntryId     <- captureParamMaybe @EntryId "id"
-    mCompletedAt <- queryParamMaybe @Day "completedDate"
-    mDescription <- queryParamMaybe @Text "description"
+    mCompletedAt <- formParamMaybe @Day "completedDate"
+    mDescription <- formParamMaybe @Text "description"
+    mDetail      <- formParamMaybe @Text "detail"
     let toNewEntry e = e
           { -- if completion date is in the past, force it to be completed in the same day
             completedDate = fmap (max date) mCompletedAt
           , description   = fromMaybe e.description mDescription
+          , detail        = fromMaybe e.detail mDetail
           }
     case mEntryId of
       Just entryId -> do

@@ -19,6 +19,8 @@ import Data.ByteString qualified as ByteString
 import Codec.Compression.Zlib qualified as Zlib
 import Data.ByteString.Base64 qualified as B64
 import Data.Text.Encoding qualified as Text
+import Data.Text qualified as Text
+import Data.Functor ((<&>))
 
 
 ----------------------------------------
@@ -45,17 +47,21 @@ instance FromJSON EntryId where
 data Entry = Entry
   { entryId       :: EntryId
   , description   :: Text
+  , detail        :: Text
+  , tags          :: [Text]
   , completedDate :: Maybe Day
   }
   deriving (Eq, Show)
 
 
 instance ToJSON Entry where
-  toJSON (Entry { entryId, description, completedDate }) =
+  toJSON e =
     Aeson.object
-      [ "id"            .= entryId
-      , "description"   .= description
-      , "completedDate" .= completedDate
+      [ "id"            .= e.entryId
+      , "description"   .= e.description
+      , "detail"        .= e.detail
+      , "tags"          .= e.tags
+      , "completedDate" .= e.completedDate
       ]
 
 
@@ -64,6 +70,8 @@ instance FromJSON Entry where
     Entry
       <$> (o .: "id")
       <*> (o .: "description")
+      <*> (o .: "detail")
+      <*> (o .: "tags")
       <*> (o .: "completedDate")
 
 
@@ -81,8 +89,12 @@ instance ToRow Entry where
 
 
 instance FromRow Entry where
-  fromRow = Entry <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field
-
+  fromRow = Entry
+    <$> Sqlite.field
+    <*> Sqlite.field
+    <*> Sqlite.field
+    <*> (Sqlite.field @Text <&> Text.words)
+    <*> Sqlite.field
 
 
 -- | Todo entries for a single day
@@ -207,4 +219,4 @@ todoToModel todo =
   where
     EntryId lastId
       | null todo.entries = EntryId 0
-      | otherwise        = maximum (fmap (.entryId) todo.entries)
+      | otherwise         = maximum (fmap (.entryId) todo.entries)

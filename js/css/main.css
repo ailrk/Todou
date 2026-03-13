@@ -1,3 +1,9 @@
+:root {
+  --min-width: 230px;
+  --max-width: 550px;
+}
+
+
 html,
 body {
 	margin: 0;
@@ -27,8 +33,8 @@ body {
 	line-height: 1.4em;
 	background: #f5f5f5;
   color: #777;
-	min-width: 230px;
-	max-width: 550px;
+	min-width: var(--min-width);
+	max-width: var(--max-width);
 	margin: 0 auto;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -37,7 +43,7 @@ body {
 
 
 * {
-    text-size-adjust: none;
+  text-size-adjust: none;
 }
 
 
@@ -61,11 +67,6 @@ button, a {
 }
 
 
-/* nav * { */
-/*   outline: 1px dashed rgba(255,0,0,0.3); */
-/* } */
-
-
 nav {
   display: flex;
   justify-content: space-between;
@@ -75,7 +76,6 @@ nav {
   margin: 0 10px 0 10px;
   -webkit-font-smoothing: antialiased;
 }
-
 
 
 nav span {
@@ -187,42 +187,6 @@ nav .back-icon:hover::before {
 }
 
 
-.edit {
-	width: 100%;
-}
-
-
-.edit textarea {
-	width: 100%;
-	font-size: 24px;
-	font-family: inherit;
-	font-weight: inherit;
-  field-sizing: content;
-  resize: none;
-	color: inherit;
-	border: 2px solid #af2f2f6e;
-	/* box-shadow: inset 0 -1px 5px 0 rgba(0, 0, 0, 0.2); */
-  box-sizing: border-box;
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
-	  line-height: 1.2;
-  padding: 13px 48px 14px 14.5px;
-}
-
-
-.edit::before {
-  content: "";
-  display: inline-block;
-  text-align: center;
-  width: 48px;
-	height: auto;
-	margin: auto 0;
-	border: none; /* Mobile Safari */
-	-webkit-appearance: none;
-	appearance: none;
-}
-
-
 .main {
 	position: relative;
 	z-index: 2;
@@ -264,143 +228,15 @@ nav .back-icon:hover::before {
 }
 
 
-.todo-list {
+.todo-list  {
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
 
-.todo-list li {
-	position: relative;
-	font-size: 24px;
-	border-bottom: 1px solid #ededed;
-  color: #8e7c7cf2;
-}
-
-
 .todo-list li:last-child {
 	border-bottom: none;
-}
-
-
-.todo-list li.editing {
-	border-bottom: none;
-	padding: 0;
-}
-
-
-.todo-list li.editing .edit {
-	display: flex;
-}
-
-
-.todo-list li.editing .edit textarea {
-  line-height: 1.2;
-  padding: 13px 48px 14px 14.5px;
-}
-
-
-.todo-list li.editing .view {
-	display: none;
-}
-
-
-.todo-list li .toggle {
-	text-align: center;
-	width: 40px;
-	/* auto, since non-WebKit browsers doesn't support input styling */
-	height: auto;
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	margin: auto 0;
-	border: none; /* Mobile Safari */
-	-webkit-appearance: none;
-	appearance: none;
-}
-
-
-.todo-list li .toggle {
-	opacity: 0;
-}
-
-
-.todo-list li .toggle + label {
-	/*
-		Firefox requires `#` to be escaped - https://bugzilla.mozilla.org/show_bug.cgi?id=922433
-		IE and Edge requires *everything* to be escaped to render, so we do that instead of just the `#` - https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/7157459/
-	*/
-	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23ededed%22%20stroke-width%3D%223%22/%3E%3C/svg%3E');
-	background-repeat: no-repeat;
-	background-position: center left;
-  white-space: pre-wrap;
-  word-break: break-word;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-
-.todo-list li .toggle:checked + label {
-	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22/%3E%3Cpath%20fill%3D%22%235dc2af%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22/%3E%3C/svg%3E');
-}
-
-.todo-list li label {
-	word-break: break-all;
-	padding: 15px 50px 15px 60px;
-	display: block;
-	line-height: 1.2;
-	transition: color 0.4s;
-}
-
-
-.todo-list li.completed label {
-	color: #d9d9d9;
-	text-decoration: line-through;
-}
-
-
-.todo-list li .destroy {
-	display: none;
-	position: absolute;
-	top: 12px;
-	right: 10px;
-	width: 40px;
-	height: 40px;
-	font-size: 30px;
-	color: #cc9a9a;
-	transition: color 0.2s ease-out;
-  cursor: pointer;
-}
-
-
-.todo-list li .destroy:hover {
-	display: flex;
-  align-items: center;
-  justify-content: center;
-	color: #af5b5e;
-}
-
-
-.todo-list li .destroy:after {
-  display: inline-block;
-  vertical-align: middle;
-  line-height: 1;
-	content: url('x.svg');
-}
-
-
-.todo-list li:hover .destroy {
-	display: block;
-}
-
-
-.todo-list li .edit {
-	display: none;
-}
-
-
-.todo-list li.editing:last-child {
-	margin-bottom: -1px;
 }
 
 
@@ -477,18 +313,145 @@ nav .back-icon:hover::before {
 }
 
 
-.clear-completed,
-html .clear-completed:active {
-	float: right;
-	position: relative;
-	line-height: 20px;
-	text-decoration: none;
-	cursor: pointer;
+.completed {
+	color: #d9d9d9 !important;
+	text-decoration: line-through;
 }
 
 
-.clear-completed:hover {
-	text-decoration: underline;
+.edit {
+	width: 100%;
+  transition: box-shadow 0.3s ease-in-out, /* Fade in */
+              color 0.4s ease,
+              text-decoration 0.4s ease;
+  box-sizing: border-box;
+}
+
+
+.edit textarea {
+	width: 100%;
+	font-size: 24px;
+	font-family: inherit;
+	font-weight: inherit;
+  field-sizing: content;
+  resize: none;
+	border: none;                            /* Use box-shadow for border */
+  box-shadow: inset 0 0 0 0 #af2f2f6e;     /* Initially now outline */
+	color: inherit;
+  scrollbar-color: #af2f2f6e #f5f5f5;
+  scrollbar-width: thin;
+  line-height: 1.2;
+  padding: 13px 48px 14px 14.5px;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+
+.editing.edit {
+  box-shadow: /* Hallow outline */
+    inset 0 0 0 2px #af2f2f6e,
+    0 0 8px 1px rgba(175, 47, 47, 0.3);
+}
+
+
+.destroy {
+	display: none;
+	position: absolute;
+	top: 12px;
+	right: 10px;
+	width: 40px;
+	height: 40px;
+	font-size: 30px;
+	color: #cc9a9a;
+	transition: color 0.2s ease-out;
+  cursor: pointer;
+}
+
+
+.destroy:hover {
+	display: flex;
+  align-items: center;
+  justify-content: center;
+	color: #af5b5e;
+}
+
+
+.destroy:after {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
+	content: url('x.svg');
+}
+
+
+.entry-description:hover .destroy {
+	display: block;
+}
+
+
+.entry-description, .entry-detail {
+	position: relative;
+	font-size: 24px;
+  padding: 3px; /* Leave space for outline */
+	border-bottom: 1px solid #ededed;
+  color: #8e7c7cf2;
+}
+
+
+.entry-description label, .entry-description textarea {
+	word-break: break-all;
+	padding: 15px 50px 15px 60px;
+	display: block;
+  white-space: pre-wrap;
+	line-height: 1.2;
+}
+
+
+.entry-description label {
+  transition: 0.4s ease;
+}
+
+
+.entry-detail textarea {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  display: block;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+
+.entry-detail {
+  height: 360px;
+}
+
+
+.toggle {
+	text-align: center;
+	width: 40px;
+	height: auto;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	margin: auto 0;
+	border: none; /* Mobile Safari */
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+
+input.toggle {
+	/*
+		Firefox requires `#` to be escaped - https://bugzilla.mozilla.org/show_bug.cgi?id=922433
+		IE and Edge requires *everything* to be escaped to render, so we do that instead of just the `#` - https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/7157459/
+	*/
+	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23ededed%22%20stroke-width%3D%223%22/%3E%3C/svg%3E');
+}
+
+
+input.toggle:checked  {
+	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22/%3E%3Cpath%20fill%3D%22%235dc2af%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22/%3E%3C/svg%3E');
 }
 
 
@@ -524,11 +487,11 @@ html .clear-completed:active {
 */
 @media screen and (-webkit-min-device-pixel-ratio:0) {
 	.toggle-all,
-	.todo-list li .toggle {
+	.toggle {
 		background: none;
 	}
 
-	.todo-list li .toggle {
+	.toggle {
 		height: 40px;
 	}
 }
@@ -544,7 +507,7 @@ html .clear-completed:active {
 }
 
 
-.calendar-modal {
+.modal {
   position: fixed;
   top: 0px;
   bottom: 0px;
@@ -553,11 +516,25 @@ html .clear-completed:active {
   background-color: rgba(0,0,0,0.6);
   padding: 0;
   box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
-  user-select: none;
   z-index: 10;
   animation-name: fadeIn;
   animation-duration: 100ms;
   animation-timing-function: ease-in;
+}
+
+
+.detail-content {
+	min-width: var(--min-width);
+	max-width: var(--max-width);
+  margin: auto;
+  margin-top: 10px;
+  padding: 20px 20px 20px 15px;
+  background-color: #fff;
+}
+
+
+.calendar-modal {
+  user-select: none;
 }
 
 

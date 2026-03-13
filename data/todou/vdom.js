@@ -19,6 +19,9 @@ items to shift positions, breaking the diffing logic. To handle this, elements c
 `key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
 first, and fall back to index-based comparison if no key is provided.
 */
+export function createRef() {
+    return { current: null };
+}
 /** Create a new vdom object. The object can be tweaked after creation */
 export function newVdom({ model, root, render, effects }) {
     let _tree = undefined;
@@ -40,6 +43,9 @@ function createElement(vnode) {
     if (typeof vnode === 'string')
         return document.createTextNode(vnode);
     const el = document.createElement(vnode.tag);
+    if (vnode.ref) {
+        vnode.ref.current = el;
+    }
     if (vnode.attrs) {
         for (const [k, v] of Object.entries(vnode.attrs)) {
             if (keyIsHandler(k, v)) {
@@ -66,31 +72,44 @@ function createElement(vnode) {
 }
 /** Update an element. The existing element is the `index`th child of the parent. */
 function updateElement(parent, newVNode, oldVNode, index = 0) {
-    if (!oldVNode) {
+    if (oldVNode === null || oldVNode === undefined) {
         if (newVNode) {
             parent.appendChild(createElement(newVNode));
         }
         else {
-            console.error("[vdom] can't diff vdom without a vnode");
+            console.error("[vdom] can't diff vdom without a vnode", newVNode);
         }
         return;
     }
     let existing = parent.childNodes[index];
     if (!newVNode) {
         if (existing) {
+            if (existing instanceof HTMLElement) {
+                removeListeners(existing, oldVNode);
+            }
+            cleanupVNode(oldVNode);
             parent.removeChild(existing);
         }
         return;
     }
     // Simple text node
     if (typeof newVNode === 'string' && typeof oldVNode === 'string') {
-        if (newVNode !== oldVNode)
-            existing.textContent = newVNode;
+        if (newVNode !== oldVNode) {
+            if (existing) {
+                existing.textContent = newVNode;
+            }
+            else {
+                parent.textContent = newVNode;
+            }
+        }
         return;
     }
     // Update attrs
     if (typeof newVNode !== 'string' && typeof oldVNode !== 'string' && newVNode.tag === oldVNode.tag) {
         let el = existing;
+        if (newVNode.ref) {
+            newVNode.ref.current = el;
+        }
         for (const [k, v] of Object.entries(newVNode.attrs || {})) {
             if (v == null) {
                 continue;
@@ -122,6 +141,7 @@ function updateElement(parent, newVNode, oldVNode, index = 0) {
         return;
     }
     // Replace completely
+    cleanupVNode(oldVNode); // Clear old refs
     parent.replaceChild(createElement(newVNode), existing);
 }
 /** Update children, prioritize key, then fall back to index */
@@ -165,11 +185,33 @@ function updateChildren(parent, newChildren, oldChildren) {
         }
     });
     // Remove leftovers
-    for (const { ref } of oldKeyMap.values()) {
+    for (const { vnode, ref } of oldKeyMap.values()) {
+        cleanupVNode(vnode);
         parent.removeChild(ref);
     }
     for (const action of pendingActions) {
         action();
+    }
+}
+/* Cleanup event listeners. */
+function removeListeners(el, vnode) {
+    if (typeof vnode === 'string' || !vnode._listeners)
+        return;
+    for (const [k, v] of Object.entries(vnode._listeners)) {
+        el.removeEventListener(k.slice(2).toLowerCase(), v);
+    }
+}
+/* Cleanup ref to avoid dangling refs. */
+function cleanupVNode(vnode) {
+    if (!vnode || typeof vnode === 'string')
+        return;
+    // Clear the ref if it exists
+    if (vnode.ref) {
+        vnode.ref.current = null;
+    }
+    // Recursively cleanup children
+    if (vnode.children) {
+        vnode.children.forEach(cleanupVNode);
     }
 }
 function keyIsProperty(k) {
@@ -187,6 +229,7 @@ function keyIsProperty(k) {
         case "contentEditable":
         case "readOnly":
         case "hidden":
+        case "ref":
             return true;
         default:
             return false;
@@ -213,6 +256,7 @@ export function h(tag, props, ...children) {
         tag,
         attrs: props || {},
         children: flatChildren.length > 0 ? flatChildren : undefined,
-        key: props?.key
+        key: props?.key,
+        ref: props?.ref
     };
 }

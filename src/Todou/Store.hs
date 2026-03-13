@@ -20,11 +20,10 @@ import Data.ByteString.Char8 qualified as Char8
 import Data.ByteString.Lazy qualified as LBS
 import Data.Char (isSpace)
 import Data.Coerce (coerce)
-import Data.Function (fix)
 import Data.Functor ((<&>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe, maybeToList, isJust)
+import Data.Maybe (fromMaybe, maybeToList, isJust)
 import Data.String.Interpolate (iii, i)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -49,7 +48,6 @@ import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer 
 import Todou.Option
 
 
-
 ----------------------------------------
 -- Parsing
 ----------------------------------------
@@ -64,23 +62,45 @@ trim :: Text -> Text
 trim = Text.dropAround isSpace
 
 
-parseLine :: Text -> Maybe (Text, Text)
-parseLine line =
-  case Text.breakOn "=" line of
-    (k, v)
-      | not (Text.null v) -> Just (trim k, trim (Text.drop 1 v))
-    _ -> Nothing
+parseKVs :: [Text] -> ([(Text, Text)], [Text])
+parseKVs [] = ([], [])
+parseKVs (l:ls)
+  | Text.null (Text.strip l) = parseKVs ls          -- Skip empty lines
+  | "[" `Text.isPrefixOf` Text.strip l = ([], l:ls) -- Stop at next section
+  | otherwise =
+      case Text.breakOn "=" l of
+        (k, v) | not (Text.null v) ->
+          let key                   = Text.strip k
+              firstVal              = Text.drop 1 v -- drop the '='
+              (fullVal, rest)       = collectMultiline firstVal ls
+              nextKV                = (key, Text.strip fullVal)
+              (otherKVs, finalRest) = parseKVs rest
+          in (nextKV : otherKVs, finalRest)
+        _ -> parseKVs ls                            -- Ignore lines without '='
+
+
+collectMultiline :: Text -> [Text] -> (Text, [Text])
+collectMultiline currentVal [] = (currentVal, [])
+collectMultiline currentVal (l:ls) =
+  let trimmed = Text.stripEnd currentVal
+  in if "\\" `Text.isSuffixOf` trimmed
+     then collectMultiline (Text.dropEnd 1 trimmed <> "\n" <> l) ls
+     else (currentVal, l:ls)
 
 
 parseEntry :: [Text] -> Maybe Entry
 parseEntry ls = do
-  let kvs      = mapMaybe parseLine ls
+  let kvs      = fst (parseKVs ls)
   entryId     <- lookup "id" kvs >>= readMaybe . Text.unpack <&> EntryId
   description <- lookup "description" kvs
+  let detail   = fromMaybe "" (lookup "detail" kvs)
+  let tags     = fromMaybe mempty (lookup "tags" kvs <&> Text.words)
 
   pure Entry
-    { entryId     = entryId
-    , description = description
+    { entryId       = entryId
+    , description   = description
+    , detail        = detail
+    , tags          = tags
     , completedDate = lookup "completedDate" kvs >>= parseDate . Text.unpack
     }
 
@@ -91,8 +111,14 @@ parseDate = parseTimeM True defaultTimeLocale "%Y-%m-%d"
 
 parseMeta :: [Text] -> Maybe Day
 parseMeta ls = do
-  kvs <- traverse parseLine ls
+  let kvs = fst (parseKVs ls)
   lookup "date" kvs >>= parseDate . Text.unpack
+
+
+parseSection :: [Text] -> Maybe IniSection
+parseSection ls = do
+  EntrySection <$> parseEntry ls
+  <|> MetaSection <$> parseMeta ls
 
 
 -- | Split a file into list of entries
@@ -106,12 +132,6 @@ splitSections = snd . foldr
          else (line:buf, result)
     )
   ([], [])
-
-
-parseSection :: [Text] -> Maybe IniSection
-parseSection ls = do
-  EntrySection <$> parseEntry ls
-  <|> MetaSection <$> parseMeta ls
 
 
 parseIni :: Text -> Maybe [IniSection]
@@ -153,16 +173,23 @@ dumpDate date =
 
 
 dumpEntry :: Entry -> [Text]
-dumpEntry (Entry { entryId = EntryId entryId, description, completedDate }) =
+dumpEntry (Entry { entryId = EntryId entryId, description, detail, tags, completedDate }) =
   [ "[entry]"
   , "id = " <> Text.pack (show entryId)
-  , "description = " <> description
+  , "description = " <> (formatMultiline description)
+  , "detail = " <>  (formatMultiline detail)
+  , "tags = " <> Text.unwords tags
   , case completedDate of
       Just day -> "completedDate = " <> (Text.pack (formatTime defaultTimeLocale "%Y-%m-%d" day))
       Nothing  -> mempty
   ]
 
 
+-- | Converts internal newlines into the " \ " continuation format
+-- Trailing newlines are removed.
+formatMultiline :: Text -> Text
+formatMultiline txt =
+  Text.replace "\n" " \\\n" (Text.stripEnd txt)
 
 ----------------------------------------
 -- Storage.Sqlite3
@@ -177,6 +204,8 @@ createSqliteSchema conn = do
       CREATE TABLE IF NOT EXISTS entry
         ( id             INTEGER KEY NOT NULL
         , description    TEXT NOT NULL
+        , detail         TEXT
+        , tags           TEXT
         , completed_date DATE
         , todo_date      DATE NOT NULL
         , UNIQUE(id, todo_date)
@@ -322,7 +351,7 @@ loadTodoFromStorage handle date buffer = do
         Nothing -> pure buffer
     Sqlite3Handle conn _ -> do
       entries <- Sqlite.query conn
-        [i|SELECT id, description, completed_date FROM entry WHERE todo_date = (?); |] (Only dateStr)
+        [i|SELECT id, description, detail, tags, completed_date FROM entry WHERE todo_date = (?); |] (Only dateStr)
       let todo = Todo
             { entries = entries
             , date    = date
@@ -344,13 +373,14 @@ loadTodoFromStorage handle date buffer = do
 
 -- | Load all todos into model
 loadAllTodos :: Handle -> Day -> Day -> IO ()
-loadAllTodos handle from to = do
-  flip fix from \rec d -> do
-    _ <- loadTodo handle d
-    if d > to
-       then pure ()
-       else do
-         rec (1 `addDays` d)
+loadAllTodos handle from to =
+  let loop d = do
+        _ <- loadTodo handle d
+        if d > to
+           then pure ()
+           else do
+             loop (1 `addDays` d)
+   in loop from
 
 
 -- | Flush in memory todo to storage
@@ -388,9 +418,11 @@ flushOnDirty handle todo@(Todo { entries, date }) = do
         (Only date :. ids)
       Sqlite.executeMany conn
         [iii|
-              INSERT INTO entry (todo_date, id, description, completed_date) VALUES (?,?,?,?)
+              INSERT INTO entry (todo_date, id, description, detail, tags, completed_date) VALUES (?,?,?,?)
               ON CONFLICT(id, todo_date) DO UPDATE SET
                 description    = excluded.description,
+                detail         = excluded.detail,
+                tags           = excluded.tags,
                 completed_date = excluded.completed_date;
         |]
         $ fmap (Only date :.) entries
