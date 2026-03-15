@@ -337,11 +337,13 @@ server Options { port } handle = scotty port do
     mCompletedAt <- formParamMaybe @Day "completedDate"
     mDescription <- formParamMaybe @Text "description"
     mDetail      <- formParamMaybe @Text "detail"
+    mTags        <- formParamMaybe @Text "tags"
     let toNewEntry e = e
           { -- if completion date is in the past, force it to be completed in the same day
             completedDate = fmap (max date) mCompletedAt
           , description   = fromMaybe e.description mDescription
           , detail        = fromMaybe e.detail mDetail
+          , tags          = fromMaybe e.tags (fmap Text.words mTags)
           }
     case mEntryId of
       Just entryId -> do
@@ -387,8 +389,8 @@ server Options { port } handle = scotty port do
 
   -- delete completed entries
   delete "/entry/delete/:date" do
-    date      <- captureParam @Day "date"
-    completed <- queryFlag "completed"
+    date       <- captureParam @Day "date"
+    completed  <- queryFlag "completed"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
       Just _
         | completed -> do

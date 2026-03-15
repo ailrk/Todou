@@ -1,4 +1,4 @@
-import { newVdom, h } from "./vdom.js";
+import { newVdom, h, createRef } from "./vdom.js";
 import { base64ToBitSet, fmtYM, getDateFromPath } from "./lib.js";
 function isCompleted(e) { return e.completedDate !== null; }
 /*
@@ -88,6 +88,37 @@ function renderEntry(model, entry) {
             } }, entry.description),
         h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })));
 }
+function renderTag(model, entry, tag) {
+    return (h("div", { key: `todo-detail-tag-${tag}`, class: "tag" },
+        h("span", null, tag),
+        h("button", { class: "delete-tag", onclick: () => deleteTag(model, entry, tag) })));
+}
+function renderTags(model, entry) {
+    async function onKeydown(ev) {
+        if (ev.key === "Enter") {
+            const input = ev.target;
+            const newTag = input.value.trim();
+            if (newTag) {
+                if (entry.tags.includes(newTag)) {
+                    input.classList.add('error');
+                    setTimeout(() => {
+                        input.classList.remove('error');
+                    }, 800);
+                }
+                else {
+                    entry.tags.push(newTag);
+                    input.value = "";
+                    await updateEntryAPI(model.date, entry.id, { tags: entry.tags });
+                }
+            }
+        }
+        await vdom.render();
+    }
+    return (h("div", { class: "detail-tags" },
+        entry.tags.map(tag => renderTag(model, entry, tag)),
+        h("div", { class: "add-tag-container" },
+            h("input", { type: "text", placeholder: "+ Tag", onkeydown: onKeydown }))));
+}
 function renderDetailDescription(model) {
     if (model.entry === null)
         return "No Entry";
@@ -102,11 +133,10 @@ function renderDetailDescription(model) {
         checkEntry(model, entry.id, completedDate);
     }
     function onClick() {
-        console.log('desc click');
         editingEntryDescription(model, entry.id, true);
     }
     function onKeydown(ev) {
-        if (ev.key === "Enter" && !ev.shiftKey) {
+        if (ev.key === "Enter" && !ev.shiftKey || ev.key === "Escape") {
             ev.preventDefault();
             editingEntryDescription(model, entry.id, false);
         }
@@ -115,7 +145,6 @@ function renderDetailDescription(model) {
         updateEntry(model, entry.id, { description: ev.target.value });
     }
     function onBlur() {
-        console.log('desc blur');
         editingEntryDescription(model, entry.id, false);
     }
     function onDestroy() {
@@ -124,7 +153,7 @@ function renderDetailDescription(model) {
     }
     return (h("div", { class: "entry-description edit " + classes },
         h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: onCheck }),
-        h("textarea", { name: "description", value: entry.description, id: `todo-description-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur }),
+        h("input", { name: "description", readOnly: !(entry.editingDescription ?? false), value: entry.description, id: `todo-description-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur }),
         h("button", { class: "destroy", onclick: onDestroy })));
 }
 function renderDetail(model) {
@@ -135,12 +164,12 @@ function renderDetail(model) {
         [model.entry.editingDetail ? "editing" : ""
         ].filter(Boolean).join(" ");
     function onClick() {
-        console.log('detail onclick');
         editingEntryDetail(model, entry.id, true);
     }
     function onKeydown(ev) {
-        if (ev.key === "Enter" && !ev.shiftKey) {
+        if (ev.key === "Escape") {
             ev.preventDefault();
+            ev.stopPropagation();
             editingEntryDetail(model, entry.id, false);
         }
     }
@@ -148,29 +177,32 @@ function renderDetail(model) {
         updateEntry(model, entry.id, { detail: ev.target.value });
     }
     function onBlur() {
-        console.log('detail blur');
         editingEntryDetail(model, entry.id, false);
     }
     return (h("div", { class: "entry-detail edit " + classes },
-        h("textarea", { name: "detail", value: entry.detail, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
+        h("textarea", { name: "detail", readOnly: !(entry.editingDetail ?? false), value: entry.detail, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
 }
 function renderDetailModal(model) {
     if (model.entry === null) {
         return "Empty Entry";
     }
+    let contentRef = createRef();
     return (h("div", { class: "detail-modal modal", tabindex: "-1", onkeydown: (ev) => {
             if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
                 ev.stopPropagation();
             }
         }, onclick: (ev) => {
-            if (document.querySelector('.detail-content').contains(ev.target))
+            let path = ev.composedPath();
+            if (contentRef.current && path.includes(contentRef.current)) {
                 return;
+            }
             toggleDetail(model, false);
         } },
-        h("div", { class: "detail-content" },
+        h("div", { class: "detail-content", ref: contentRef },
             h("div", { class: "detail-header" },
                 renderDetailDescription(model),
-                h("div", { class: "detail-tags" })),
+                h("div", { class: "detail-completed-date" }),
+                renderTags(model, model.entry)),
             h("div", { class: "detail-body" }, renderDetail(model)))));
 }
 function renderCalendarModal(model) {
@@ -299,7 +331,12 @@ async function editingEntryDescription(model, id, isEditing = false) {
         return;
     entry.editingDescription = isEditing;
     if (!isEditing) {
-        await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail);
+        await updateEntryAPI(model.date, id, {
+            completedDate: entry.completedDate,
+            description: entry.description,
+            detail: entry.detail,
+            tags: entry.tags
+        });
     }
     await vdom.render();
 }
@@ -309,18 +346,26 @@ async function editingEntryDetail(model, id, isEditing = false) {
         return;
     entry.editingDetail = isEditing;
     if (!isEditing) {
-        await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail);
+        await updateEntryAPI(model.date, id, {
+            completedDate: entry.completedDate,
+            description: entry.description,
+            detail: entry.detail,
+            tags: entry.tags
+        });
     }
     await vdom.render();
 }
 async function updateEntry(model, id, delta) {
     model.entries.forEach(entry => {
         if (entry.id === id) {
-            if (delta.description) {
+            if (delta.description !== undefined) {
                 entry.description = delta.description;
             }
-            if (delta.detail) {
+            if (delta.detail !== undefined) {
                 entry.detail = delta.detail;
+            }
+            if (delta.tags !== undefined) {
+                entry.tags = delta.tags;
             }
         }
     });
@@ -332,7 +377,7 @@ async function deleteEntry(model, id) {
     await vdom.render();
 }
 async function checkEntry(model, id, completedDate) {
-    await updateEntryAPI(model.date, id, completedDate);
+    await updateEntryAPI(model.date, id, { completedDate });
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.completedDate = completedDate;
@@ -377,6 +422,11 @@ async function toggleCalendar(model, show) {
             el.focus();
         }
     }
+}
+async function deleteTag(model, entry, tag) {
+    entry.tags = entry.tags.filter(t => t !== tag);
+    await updateEntryAPI(model.date, entry.id, { tags: entry.tags });
+    await vdom.render();
 }
 async function toggleDetail(model, show) {
     if (show !== undefined) {
@@ -432,16 +482,20 @@ async function addEntryAPI(date, id, description) {
     }
     return result.json();
 }
-async function updateEntryAPI(date, id, completedDate, description, detail) {
+// , completedDate: string | null, description?: string, detail?: string, tags?: string[]
+async function updateEntryAPI(date, id, delta) {
     const formData = new URLSearchParams();
-    if (completedDate !== null) {
-        formData.set("completedDate", completedDate);
+    if (delta.completedDate !== undefined && delta.completedDate !== null) {
+        formData.set("completedDate", delta.completedDate);
     }
-    if (description !== undefined) {
-        formData.set("description", String(description));
+    if (delta.description !== undefined) {
+        formData.set("description", String(delta.description));
     }
-    if (detail !== undefined) {
-        formData.set("detail", String(detail));
+    if (delta.detail !== undefined) {
+        formData.set("detail", String(delta.detail));
+    }
+    if (delta.tags !== undefined) {
+        formData.set("tags", delta.tags.join(" "));
     }
     let result = await fetch(`/entry/update/${date}/${id}`, {
         method: "PUT",

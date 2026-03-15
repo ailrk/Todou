@@ -1,4 +1,4 @@
-import { newVdom, VNode, h, VDom } from "./vdom.js";
+import { newVdom, VNode, h, VDom, createRef } from "./vdom.js";
 import { base64ToBitSet, fmtYM, PresenceView, YMD, getDateFromPath } from "./lib.js";
 
 
@@ -19,6 +19,7 @@ interface Entry {
   editingDescription: boolean;
   editingDetail: boolean;
 }
+
 
 function isCompleted(e: Entry): boolean { return e.completedDate !== null; }
 
@@ -195,13 +196,63 @@ function renderEntry(model: Model, entry: Entry): VNode {
           let completedDate = isCompleted(entry) ? null : formatted;
           checkEntry(model, entry.id, completedDate)
         }} />
-        <label onclick={() => {
+      <label onclick={() => {
           model.entry = entry;
           toggleDetail(model);
-        }}>{entry.description}</label>
-        <button class="destroy" onclick={() => deleteEntry(model, entry.id)} />
+      }}>{entry.description}</label>
+      <button class="destroy" onclick={() => deleteEntry(model, entry.id)} />
       </li>
     );
+}
+
+
+function renderTag(model: Model, entry: Entry, tag: string): VNode {
+  return (
+    <div key={`todo-detail-tag-${tag}`} class="tag">
+      <span>{tag}</span>
+      <button
+        class="delete-tag"
+        onclick={() => deleteTag(model, entry, tag)}>
+      </button>
+    </div>
+  );
+}
+
+
+function renderTags(model: Model, entry: Entry): VNode {
+
+  async function onKeydown(ev: KeyboardEvent) {
+    if (ev.key === "Enter") {
+      const input = ev.target as HTMLInputElement;
+      const newTag = input.value.trim();
+      if (newTag) {
+        if (entry.tags.includes(newTag)) {
+          input.classList.add('error');
+          setTimeout(() => {
+            input.classList.remove('error');
+          }, 800);
+        } else {
+          entry.tags.push(newTag);
+          input.value = "";
+          await updateEntryAPI(model.date, entry.id, { tags: entry.tags });
+        }
+      }
+    }
+    await vdom.render();
+  }
+
+  return (
+    <div class="detail-tags">
+      {entry.tags.map(tag => renderTag(model, entry, tag))}
+      <div class="add-tag-container">
+        <input
+          type="text"
+          placeholder="+ Tag"
+          onkeydown={onKeydown}
+        />
+      </div>
+    </div>
+  );
 }
 
 
@@ -222,12 +273,11 @@ function renderDetailDescription(model: Model) {
   }
 
   function onClick() {
-    console.log('desc click')
     editingEntryDescription(model, entry.id, true);
   }
 
   function onKeydown(ev: KeyboardEvent) {
-    if (ev.key === "Enter" && !ev.shiftKey) {
+    if (ev.key === "Enter" && !ev.shiftKey || ev.key === "Escape") {
       ev.preventDefault();
       editingEntryDescription(model, entry.id, false);
     }
@@ -238,7 +288,6 @@ function renderDetailDescription(model: Model) {
   }
 
   function onBlur() {
-    console.log('desc blur')
     editingEntryDescription(model, entry.id, false);
   }
 
@@ -254,8 +303,9 @@ function renderDetailDescription(model: Model) {
         type="checkbox"
         checked={isCompleted(entry)}
         onclick={onCheck} />
-      <textarea
+      <input
         name="description"
+        readOnly={!(entry.editingDescription ?? false)}
         value={entry.description}
         id={`todo-description-${entry.id}`}
         onclick={onClick}
@@ -279,13 +329,13 @@ function renderDetail(model: Model) {
     ].filter(Boolean).join(" ");
 
   function onClick() {
-    console.log('detail onclick')
     editingEntryDetail(model, entry.id, true);
   }
 
   function onKeydown(ev: KeyboardEvent) {
-    if (ev.key === "Enter" && !ev.shiftKey) {
+    if (ev.key === "Escape") {
       ev.preventDefault();
+      ev.stopPropagation();
       editingEntryDetail(model, entry.id, false);
     }
   }
@@ -295,7 +345,6 @@ function renderDetail(model: Model) {
   }
 
   function onBlur() {
-    console.log('detail blur')
     editingEntryDetail(model, entry.id, false);
   }
 
@@ -303,6 +352,7 @@ function renderDetail(model: Model) {
     <div class={ "entry-detail edit " + classes}>
       <textarea
         name="detail"
+        readOnly={!(entry.editingDetail ?? false)}
         value={entry.detail}
         id={`todo-detail-${entry.id}`}
         onclick={onClick}
@@ -319,6 +369,8 @@ function renderDetailModal(model: Model): VNode {
     return "Empty Entry";
   }
 
+  let contentRef = createRef();
+
   return (
     <div
       class="detail-modal modal"
@@ -329,15 +381,18 @@ function renderDetailModal(model: Model): VNode {
         }
       }}
       onclick={(ev: MouseEvent) => {
-        if (document.querySelector('.detail-content')!.contains(ev.target as Node)) return;
+        let path = ev.composedPath();
+        if (contentRef.current && path.includes(contentRef.current as HTMLElement)) {
+            return;
+        }
         toggleDetail(model, false)
-
       }}>
-      <div class="detail-content">
+      <div class="detail-content" ref={contentRef}>
         <div class="detail-header">
           { renderDetailDescription(model) }
-          <div class="detail-tags">
+          <div class="detail-completed-date">
           </div>
+          { renderTags(model, model.entry!) }
         </div>
         <div class="detail-body">
           { renderDetail(model) }
@@ -475,8 +530,10 @@ function renderCalendarModal(model: Model): VNode {
 
 
 interface EditingDelta {
+  completedDate?: string | null;
   description?: string;
   detail?: string;
+  tags?: string[]
 }
 
 
@@ -512,7 +569,12 @@ async function editingEntryDescription(model: Model, id: EntryId, isEditing: boo
   entry.editingDescription = isEditing;
 
   if (!isEditing) {
-    await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail)
+    await updateEntryAPI(model.date, id, {
+      completedDate: entry.completedDate,
+      description: entry.description,
+      detail: entry.detail,
+      tags: entry.tags
+    });
   }
 
   await vdom.render();
@@ -527,7 +589,12 @@ async function editingEntryDetail(model: Model, id: EntryId, isEditing: boolean 
   entry.editingDetail = isEditing;
 
   if (!isEditing) {
-    await updateEntryAPI(model.date, id, entry.completedDate, entry.description, entry.detail)
+    await updateEntryAPI(model.date, id, {
+      completedDate: entry.completedDate,
+      description: entry.description,
+      detail: entry.detail,
+      tags: entry.tags
+    });
   }
 
   await vdom.render();
@@ -537,12 +604,16 @@ async function editingEntryDetail(model: Model, id: EntryId, isEditing: boolean 
 async function updateEntry(model: Model, id: EntryId, delta: EditingDelta) {
   model.entries.forEach(entry => {
     if (entry.id === id) {
-      if (delta.description) {
+      if (delta.description !== undefined) {
         entry.description = delta.description;
       }
 
-      if (delta.detail) {
+      if (delta.detail !== undefined) {
         entry.detail = delta.detail;
+      }
+
+      if (delta.tags !== undefined) {
+        entry.tags = delta.tags;
       }
     }
   })
@@ -558,7 +629,7 @@ async function deleteEntry(model: Model, id: EntryId) {
 
 
 async function checkEntry(model: Model, id: EntryId, completedDate: string | null) {
-  await updateEntryAPI(model.date, id, completedDate);
+  await updateEntryAPI(model.date, id, { completedDate });
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.completedDate = completedDate
@@ -612,6 +683,14 @@ async function toggleCalendar(model: Model, show?: boolean) {
       (el as HTMLElement).focus();
     }
   }
+}
+
+
+async function deleteTag(model: Model, entry: Entry, tag: string) {
+  entry.tags = entry.tags.filter(t => t !== tag);
+
+  await updateEntryAPI(model.date, entry.id, { tags: entry.tags });
+  await vdom.render();
 }
 
 
@@ -684,19 +763,24 @@ async function addEntryAPI(date: string, id: number, description: string) {
   return result.json();
 }
 
+// , completedDate: string | null, description?: string, detail?: string, tags?: string[]
 
-async function updateEntryAPI(date: string, id: number, completedDate: string | null, description?: string, detail?: string) {
+async function updateEntryAPI(date: string, id: number, delta: EditingDelta) {
   const formData = new URLSearchParams();
-  if (completedDate !== null) {
-    formData.set("completedDate", completedDate)
+  if (delta.completedDate !== undefined && delta.completedDate !== null) {
+    formData.set("completedDate", delta.completedDate)
   }
 
-  if (description !== undefined) {
-    formData.set("description", String(description));
+  if (delta.description !== undefined) {
+    formData.set("description", String(delta.description));
   }
 
-  if (detail !== undefined) {
-    formData.set("detail", String(detail));
+  if (delta.detail !== undefined) {
+    formData.set("detail", String(delta.detail));
+  }
+
+  if (delta.tags !== undefined) {
+    formData.set("tags", delta.tags.join(" "));
   }
 
   let result = await fetch(`/entry/update/${date}/${id}`, {

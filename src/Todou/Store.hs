@@ -45,7 +45,7 @@ import Data.Bits (Bits(..))
 import Data.Bifunctor (Bifunctor(..))
 import Data.Word (Word8)
 import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer (..), pattern TodoLoaded, pattern TodoNotExists, pattern TodoNotLoaded, getBufferDayRange)
-import Todou.Option
+import Todou.Option ( Bucket, StorageOption(..) )
 
 
 ----------------------------------------

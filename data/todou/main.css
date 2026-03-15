@@ -44,6 +44,7 @@ body {
 
 * {
   text-size-adjust: none;
+  touch-action: manipulation; /* Avoid 300ms tap delay */
 }
 
 
@@ -328,7 +329,7 @@ nav .back-icon:hover::before {
 }
 
 
-.edit textarea {
+.edit textarea[name="detail"], .edit input[name="description"] {
 	width: 100%;
 	font-size: 24px;
 	font-family: inherit;
@@ -398,12 +399,20 @@ nav .back-icon:hover::before {
 }
 
 
-.entry-description label, .entry-description textarea {
+.entry-description label {
 	word-break: break-all;
 	padding: 15px 50px 15px 60px;
 	display: block;
   white-space: pre-wrap;
 	line-height: 1.2;
+}
+
+
+.entry-description input[name="description"] {
+  display: block;
+  width: 100%; /* Ensure it fills the container */
+  padding: 15px 50px 15px 60px;
+  box-sizing: border-box; /* Critical: keeps padding inside the width */
 }
 
 
@@ -452,6 +461,78 @@ input.toggle {
 
 input.toggle:checked  {
 	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22/%3E%3Cpath%20fill%3D%22%235dc2af%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22/%3E%3C/svg%3E');
+}
+
+
+/* Container for the whole tag section */
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+
+/* Individual tag style */
+.tag {
+  background-color: #e0e0e0;
+  padding: 4px 10px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+
+/* The 'x' delete button */
+.delete-tag {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  color: #666;
+  padding: 0;
+  line-height: 1;
+}
+
+
+.delete-tag::after {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  background: #777;
+  clip-path: polygon(
+  20% 0%, 0% 0%, 40% 50%, 0% 100%, 20% 100%, 50% 65%, 80% 100%, 100% 100%,
+  60% 50%, 100% 0%, 80% 0%, 50% 35%
+  );
+}
+
+
+.delete-tag:hover {
+  transform: scale(1.2);
+}
+
+
+/* The input field for adding new tags */
+.add-tag-container input {
+  border: 1px dashed #ccc;
+  border-radius: 16px;
+  padding: 4px 10px;
+  width: 80px;
+  color: inherit;
+  outline: none;
+}
+
+.add-tag-container input.error {
+  outline: 2px solid #af2f2f6e;
+}
+
+.add-tag-container input:focus {
+  border-color: #888;
 }
 
 
@@ -752,6 +833,11 @@ input.toggle:checked  {
   background: #fff;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
+
+
+/*
+ * Styles
+ */
 
 
 @keyframes fadeIn {

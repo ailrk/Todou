@@ -271,6 +271,7 @@ function cleanupVNode(vnode?: VNode) {
 }
 
 
+/* Properties here all use javascript names, hence camel case. */
 function keyIsProperty(k: string): boolean {
   switch (k) {
     case "checked":
