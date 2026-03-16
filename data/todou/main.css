@@ -342,7 +342,6 @@ nav .back-icon:hover::before {
   scrollbar-color: #af2f2f6e #f5f5f5;
   scrollbar-width: thin;
   line-height: 1.2;
-  padding: 13px 48px 14px 14.5px;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
@@ -444,6 +443,7 @@ nav .back-icon:hover::before {
   height: 100%;
   margin: 0;
   display: block;
+  padding: 20px;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -488,7 +488,6 @@ input.toggle:checked  {
   flex-wrap: wrap;
   gap: 8px;
   padding: 6px;
-  margin-top: 10px;
   align-items: center;
 }
 
@@ -545,13 +544,65 @@ input.toggle:checked  {
   outline: none;
 }
 
+
 .add-tag-container input.error {
   outline: 2px solid #af2f2f6e;
 }
 
+
 .add-tag-container input:focus {
   border-color: #888;
 }
+
+
+.detail-content {
+	min-width: var(--min-width);
+	max-width: var(--max-width);
+  margin: auto;
+  margin-top: 10px;
+  padding: 20px 20px 30px 15px;
+  background-color: #fff;
+}
+
+
+.detail-completed-date-container {
+  padding: 6px;
+  animation-name: fadeIn;
+  animation-duration: 200ms;
+  animation-timing-function: ease-in;
+}
+
+
+.detail-completed-date-container input {
+  margin-top: 6px;
+  border: 1px solid #2faf74de;
+  border-radius: 16px;
+  padding: 4px 10px;
+  width: 120px;
+  color: inherit;
+  outline: none;
+}
+
+
+.detail-completed-date-container input:focus {
+  box-shadow: /* Hallow outline */
+    inset 0 0 0 1px #2faf74de,
+    0 0 12px 2px rgba(47, 175, 116, 0.3);
+  transition: 0.3s ease-in-out
+}
+
+
+.detail-completed-date-container input::placeholder {
+	font-style: italic;
+	font-weight: 300;
+	color: #e6e6e6;
+}
+
+
+.detail-completed-date-container input.error {
+  outline: 2px solid #af2f2f6e;
+}
+
 
 
 .info {
@@ -622,24 +673,14 @@ input.toggle:checked  {
 }
 
 
-.detail-content {
-	min-width: var(--min-width);
-	max-width: var(--max-width);
-  margin: auto;
-  margin-top: 10px;
-  padding: 20px 20px 20px 15px;
-  background-color: #fff;
-}
-
-
 .calendar-modal {
   user-select: none;
 }
 
 
 .calendar-content {
-  width: 280px;
-  height: 240px;
+  width: 320px;
+  height: 290px;
   margin: auto;
   margin-top: 10px;
   padding: 20px 20px 20px 15px;
@@ -666,7 +707,7 @@ input.toggle:checked  {
 
 
 .calendar li {
-  padding: 2px;
+  padding: 5px;
   cursor: pointer;
   z-index: 0;
 }

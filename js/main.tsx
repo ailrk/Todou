@@ -191,11 +191,7 @@ function renderEntry(model: Model, entry: Entry): VNode {
         class="toggle"
         type="checkbox"
         checked={isCompleted(entry)}
-        onclick={() => {
-          let formatted   = new Date().toISOString().split('T')[0];
-          let completedDate = isCompleted(entry) ? null : formatted;
-          checkEntry(model, entry.id, completedDate)
-        }} />
+        onclick={() => { checkEntry(model, entry.id, !isCompleted(entry)) }} />
       <label
           class={classes}
           onclick={() => {
@@ -277,9 +273,7 @@ function renderDetailDescription(model: Model) {
     ].filter(Boolean).join(" ");
 
   function onCheck() {
-    let formatted     = new Date().toISOString().split('T')[0];
-    let completedDate = isCompleted(entry) ? null : formatted;
-    checkEntry(model, entry.id, completedDate)
+    checkEntry(model, entry.id, !isCompleted(entry))
   }
 
   function onClick() {
@@ -385,6 +379,65 @@ function renderDetail(model: Model) {
 }
 
 
+function renderCompletedDate(model: Model) {
+  if (model.entry === null) {
+    return "Empty Entry";
+  }
+
+  let entry = model.entry;
+  let inputRef = createRef();
+  const isNumeric = (str: string) => str.length > 0 && [...str].every(c => c >= '0' && c <= '9');
+
+  function isValidDate(d: string) {
+    let ds = d.trim().split("-").filter(s => s !== "");
+    if (ds.length !== 3) return false;
+    if (ds[0].length !== 4 || !isNumeric(ds[0])) return false;
+    if (ds[1].length !== 2 || !isNumeric(ds[1])) return false;
+    if (ds[2].length !== 2 || !isNumeric(ds[2])) return false;
+    if (new Date(d) < new Date(model.date)) return false;
+    return true;
+  }
+
+  // Cascade to blur
+  async function onKeydown(ev: KeyboardEvent) {
+    if (ev.key === "Enter") {
+      let input = ev.target as HTMLInputElement;
+      input.blur();
+    }
+  }
+
+  async function onBlur(ev: Event) {
+    let input = ev.target as HTMLInputElement;
+    let completedDate = input.value.trim();
+    if (isValidDate(completedDate)) {
+      entry.completedDate = completedDate;
+      editingEntryDetail(model, entry.id, false);
+    } else {
+      input.classList.add('error');
+      setTimeout(() => {
+        input.classList.remove('error');
+      }, 800);
+    }
+  }
+
+  return (
+    model.entry.completedDate !== null
+      ?
+        <div class="detail-completed-date-container">
+          <input
+            type="text"
+            ref={inputRef}
+            placeholder="completed at"
+            onkeydown={onKeydown}
+            onblur={onBlur}
+            value={model.entry.completedDate}
+          />
+        </div>
+      : null
+  );
+}
+
+
 function renderDetailModal(model: Model): VNode {
   if (model.entry === null) {
     return "Empty Entry";
@@ -411,8 +464,7 @@ function renderDetailModal(model: Model): VNode {
       <div class="detail-content" ref={contentRef}>
         <div class="detail-header">
           { renderDetailDescription(model) }
-          <div class="detail-completed-date">
-          </div>
+          { renderCompletedDate(model) }
           { renderTags(model, model.entry!) }
         </div>
         <div class="detail-body">
@@ -649,8 +701,17 @@ async function deleteEntry(model: Model, id: EntryId) {
 }
 
 
-async function checkEntry(model: Model, id: EntryId, completedDate: string | null) {
-  await updateEntryAPI(model.date, id, { completedDate });
+async function checkEntry(model: Model, id: EntryId, check: boolean = true) {
+  let completedDate = null;
+  if (check) {
+    let nowDate   = new Date();
+    let modelDate = new Date(model.date + "T00:00:00");
+    let date      = nowDate < modelDate ? modelDate : nowDate;
+    completedDate = date.toISOString().split('T')[0];
+  }
+  console.log(completedDate);
+
+  await updateEntryAPI(model.date, id, { completedDate: completedDate });
   model.entries.forEach(entry => {
     if (entry.id === id) {
       entry.completedDate = completedDate
@@ -661,7 +722,10 @@ async function checkEntry(model: Model, id: EntryId, completedDate: string | nul
 
 
 async function checkAllEntries(model: Model, allCompleted?: boolean) {
-  let formatted     = new Date().toISOString().split('T')[0];
+  let nowDate       = new Date();
+  let modelDate     = new Date(model.date + "T00:00:00");
+  let date          = nowDate < modelDate ? modelDate : nowDate;
+  let formatted     = date.toISOString().split('T')[0];
   let completedDate = allCompleted ? formatted : null;
   await updateEntriesAPI(model.date, completedDate);
   model.entries.forEach(entry => {

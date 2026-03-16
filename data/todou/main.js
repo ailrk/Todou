@@ -77,11 +77,7 @@ function renderFooterInfo() {
 function renderEntry(model, entry) {
     const classes = [isCompleted(entry) ? "completed" : ""].filter(Boolean).join(" ");
     return (h("li", { key: `todo-${entry.id}`, class: "entry-description " },
-        h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: () => {
-                let formatted = new Date().toISOString().split('T')[0];
-                let completedDate = isCompleted(entry) ? null : formatted;
-                checkEntry(model, entry.id, completedDate);
-            } }),
+        h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: () => { checkEntry(model, entry.id, !isCompleted(entry)); } }),
         h("label", { class: classes, onclick: () => {
                 model.entry = entry;
                 toggleDetail(model);
@@ -131,9 +127,7 @@ function renderDetailDescription(model) {
             model.entry.editingDescription ? "editing" : "non-editing"
         ].filter(Boolean).join(" ");
     function onCheck() {
-        let formatted = new Date().toISOString().split('T')[0];
-        let completedDate = isCompleted(entry) ? null : formatted;
-        checkEntry(model, entry.id, completedDate);
+        checkEntry(model, entry.id, !isCompleted(entry));
     }
     function onClick() {
         editingEntryDescription(model, entry.id, true);
@@ -194,6 +188,54 @@ function renderDetail(model) {
     return (h("div", { class: "entry-detail edit " + classes },
         h("textarea", { name: "detail", value: entry.detail, ref: textAreaRef, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
 }
+function renderCompletedDate(model) {
+    if (model.entry === null) {
+        return "Empty Entry";
+    }
+    let entry = model.entry;
+    let inputRef = createRef();
+    const isNumeric = (str) => str.length > 0 && [...str].every(c => c >= '0' && c <= '9');
+    function isValidDate(d) {
+        let ds = d.trim().split("-").filter(s => s !== "");
+        if (ds.length !== 3)
+            return false;
+        if (ds[0].length !== 4 || !isNumeric(ds[0]))
+            return false;
+        if (ds[1].length !== 2 || !isNumeric(ds[1]))
+            return false;
+        if (ds[2].length !== 2 || !isNumeric(ds[2]))
+            return false;
+        if (new Date(d) < new Date(model.date))
+            return false;
+        return true;
+    }
+    // Cascade to blur
+    async function onKeydown(ev) {
+        if (ev.key === "Enter") {
+            let input = ev.target;
+            input.blur();
+        }
+    }
+    async function onBlur(ev) {
+        let input = ev.target;
+        let completedDate = input.value.trim();
+        if (isValidDate(completedDate)) {
+            entry.completedDate = completedDate;
+            editingEntryDetail(model, entry.id, false);
+        }
+        else {
+            input.classList.add('error');
+            setTimeout(() => {
+                input.classList.remove('error');
+            }, 800);
+        }
+    }
+    return (model.entry.completedDate !== null
+        ?
+            h("div", { class: "detail-completed-date-container" },
+                h("input", { type: "text", ref: inputRef, placeholder: "completed at", onkeydown: onKeydown, onblur: onBlur, value: model.entry.completedDate }))
+        : null);
+}
 function renderDetailModal(model) {
     if (model.entry === null) {
         return "Empty Entry";
@@ -213,7 +255,7 @@ function renderDetailModal(model) {
         h("div", { class: "detail-content", ref: contentRef },
             h("div", { class: "detail-header" },
                 renderDetailDescription(model),
-                h("div", { class: "detail-completed-date" }),
+                renderCompletedDate(model),
                 renderTags(model, model.entry)),
             h("div", { class: "detail-body" }, renderDetail(model)))));
 }
@@ -388,8 +430,16 @@ async function deleteEntry(model, id) {
     model.entries = model.entries.filter(entry => entry.id !== id);
     await vdom.render();
 }
-async function checkEntry(model, id, completedDate) {
-    await updateEntryAPI(model.date, id, { completedDate });
+async function checkEntry(model, id, check = true) {
+    let completedDate = null;
+    if (check) {
+        let nowDate = new Date();
+        let modelDate = new Date(model.date + "T00:00:00");
+        let date = nowDate < modelDate ? modelDate : nowDate;
+        completedDate = date.toISOString().split('T')[0];
+    }
+    console.log(completedDate);
+    await updateEntryAPI(model.date, id, { completedDate: completedDate });
     model.entries.forEach(entry => {
         if (entry.id === id) {
             entry.completedDate = completedDate;
@@ -398,7 +448,10 @@ async function checkEntry(model, id, completedDate) {
     await vdom.render();
 }
 async function checkAllEntries(model, allCompleted) {
-    let formatted = new Date().toISOString().split('T')[0];
+    let nowDate = new Date();
+    let modelDate = new Date(model.date + "T00:00:00");
+    let date = nowDate < modelDate ? modelDate : nowDate;
+    let formatted = date.toISOString().split('T')[0];
     let completedDate = allCompleted ? formatted : null;
     await updateEntriesAPI(model.date, completedDate);
     model.entries.forEach(entry => {
