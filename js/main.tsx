@@ -186,7 +186,7 @@ function renderEntry(model: Model, entry: Entry): VNode {
   const classes = [ isCompleted(entry) ? "completed" : "" ].filter(Boolean).join(" ");
 
   return (
-    <li key={`todo-${entry.id}`} class={"entry-description " + classes}>
+    <li key={`todo-${entry.id}`} class="entry-description ">
       <input
         class="toggle"
         type="checkbox"
@@ -196,24 +196,33 @@ function renderEntry(model: Model, entry: Entry): VNode {
           let completedDate = isCompleted(entry) ? null : formatted;
           checkEntry(model, entry.id, completedDate)
         }} />
-      <label onclick={() => {
+      <label
+          class={classes}
+          onclick={() => {
           model.entry = entry;
           toggleDetail(model);
       }}>{entry.description}</label>
+
+      <div class="entry-tags">
+        {entry.tags.map(tag => renderTag(model, entry, tag, false))}
+      </div>
       <button class="destroy" onclick={() => deleteEntry(model, entry.id)} />
       </li>
     );
 }
 
 
-function renderTag(model: Model, entry: Entry, tag: string): VNode {
+function renderTag(model: Model, entry: Entry, tag: string, canDelete: boolean = true): VNode {
   return (
     <div key={`todo-detail-tag-${tag}`} class="tag">
       <span>{tag}</span>
-      <button
-        class="delete-tag"
-        onclick={() => deleteTag(model, entry, tag)}>
-      </button>
+      { !canDelete ?  null :
+        <button
+          class="delete-tag"
+          onclick={() => deleteTag(model, entry, tag)}>
+        </button>
+
+      }
     </div>
   );
 }

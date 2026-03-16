@@ -76,22 +76,24 @@ function renderFooterInfo() {
 }
 function renderEntry(model, entry) {
     const classes = [isCompleted(entry) ? "completed" : ""].filter(Boolean).join(" ");
-    return (h("li", { key: `todo-${entry.id}`, class: "entry-description " + classes },
+    return (h("li", { key: `todo-${entry.id}`, class: "entry-description " },
         h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: () => {
                 let formatted = new Date().toISOString().split('T')[0];
                 let completedDate = isCompleted(entry) ? null : formatted;
                 checkEntry(model, entry.id, completedDate);
             } }),
-        h("label", { onclick: () => {
+        h("label", { class: classes, onclick: () => {
                 model.entry = entry;
                 toggleDetail(model);
             } }, entry.description),
+        h("div", { class: "entry-tags" }, entry.tags.map(tag => renderTag(model, entry, tag, false))),
         h("button", { class: "destroy", onclick: () => deleteEntry(model, entry.id) })));
 }
-function renderTag(model, entry, tag) {
+function renderTag(model, entry, tag, canDelete = true) {
     return (h("div", { key: `todo-detail-tag-${tag}`, class: "tag" },
         h("span", null, tag),
-        h("button", { class: "delete-tag", onclick: () => deleteTag(model, entry, tag) })));
+        !canDelete ? null :
+            h("button", { class: "delete-tag", onclick: () => deleteTag(model, entry, tag) })));
 }
 function renderTags(model, entry) {
     async function onKeydown(ev) {
