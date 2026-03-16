@@ -58,29 +58,28 @@ instance Semigroup CFSegment where
   (<>) = mergeCFSegment
 
 
--- | Bump the CFSegment as if it continues from i.
-bumpCFSegment :: CF -> CFSegment -> CFSegment
-bumpCFSegment i (CFSegment cfs ca) =
-  let bump cf = cf { completed = cf.completed + i.completed, ongoing = cf.ongoing + i.ongoing }
-   in CFSegment { content        = fmap bump cfs
-                , completedAfter = ca
-                }
-
-
 -- | Merge to consecutive CFSegments.
 mergeCFSegment :: CFSegment -> CFSegment -> CFSegment
 mergeCFSegment (CFSegment [] _) rss = rss
 mergeCFSegment (CFSegment ls lca) rss =
   let cs1 = bumpCFSegment (last ls) rss
-      rs1 = let loop seg ca = case seg of
+      rs1 = let loop seg ca = case seg of -- compensate completedAfter.
                                x@CF { date }:xs -> case Map.lookup date ca of
-                                                     Just n  -> x { completed = x.completed + n }:loop xs (Map.delete date ca)
+                                                     Just n  -> let bump c = c { completed = c.completed + n }
+                                                                 in bump x : fmap bump (loop xs (Map.delete date ca))
                                                      Nothing -> x:loop xs ca
-                               []   -> seg
+                               [] -> seg
              in loop cs1.content lca
     in CFSegment { content        = ls <> rs1
                  , completedAfter = rss.completedAfter
                  }
+  where
+   -- Bump the CFSegment as if it continues from i.
+   bumpCFSegment i (CFSegment cfs ca) =
+      let bump cf = cf { completed = cf.completed + i.completed, ongoing = cf.ongoing + i.ongoing }
+       in CFSegment { content        = fmap bump cfs
+                    , completedAfter = ca
+                    }
 
 
 -- | Convert a CFR into a day range.
@@ -100,7 +99,7 @@ cfrToDayRange r =
           else  cfrToDayRange (CFRMonth from)
 
 
--- | Create a list of CF that can be plotted as a Cumulative Flow Diagram.
+-- | Create a list of CF, only record the day if something happened.
 -- This function uses `rangeQuery` which is O(log(n) + log(n')).
 createCFSegment :: CFR -> Map Day (Maybe Todo) -> CFSegment
 createCFSegment r todos =

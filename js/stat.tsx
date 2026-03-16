@@ -289,7 +289,6 @@ async function drawCFD(model: Model) {
   }
 
 
-
   // Vertical Grid Lines (X-Axis) - matching data points
   const gap = Math.floor(cfd.content.length / 32) + 1; // gap by month
   cfd.content.forEach((val, i) => {
