@@ -449,7 +449,6 @@ function drawCFDDatapoints(canvas: HTMLCanvasElement, model: Model, evt?: MouseE
       }
     }
   });
-
 }
 
 

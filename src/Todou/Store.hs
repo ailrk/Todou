@@ -13,7 +13,7 @@ import Control.Applicative (Alternative((<|>)))
 import Control.Concurrent (threadDelay, forkIO, ThreadId, readMVar, modifyMVar_, modifyMVar)
 import Control.Concurrent.MVar (MVar, newMVar)
 import Control.Exception (try, SomeException, Exception (..))
-import Control.Monad (unless, forM_, forever, join, void)
+import Control.Monad (unless, forM_, forever, join, void, guard)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
@@ -56,6 +56,7 @@ import Todou.Option ( Bucket, StorageOption(..) )
 data IniSection
   = EntrySection Entry
   | MetaSection Day
+  deriving Show
 
 
 trim :: Text -> Text
@@ -89,7 +90,10 @@ collectMultiline currentVal (l:ls) =
 
 
 parseEntry :: [Text] -> Maybe Entry
-parseEntry ls = do
+parseEntry [] = Nothing
+parseEntry (l:ls) = do
+  guard ("[entry]" `Text.isPrefixOf` l)
+
   let kvs      = fst (parseKVs ls)
   entryId     <- lookup "id" kvs >>= readMaybe . Text.unpack <&> EntryId
   description <- lookup "description" kvs
@@ -110,7 +114,9 @@ parseDate = parseTimeM True defaultTimeLocale "%Y-%m-%d"
 
 
 parseMeta :: [Text] -> Maybe Day
-parseMeta ls = do
+parseMeta []     = Nothing
+parseMeta (l:ls) = do
+  guard ("[date]" `Text.isPrefixOf` l)
   let kvs = fst (parseKVs ls)
   lookup "date" kvs >>= parseDate . Text.unpack
 
@@ -128,7 +134,7 @@ splitSections = snd . foldr
     let stripped = Text.strip line
      in
       if "[" `Text.isPrefixOf` stripped
-         then ([], filter (/= mempty) buf:result)
+         then ([], filter (/= mempty) (line:buf):result)
          else (line:buf, result)
     )
   ([], [])
@@ -418,7 +424,7 @@ flushOnDirty handle todo@(Todo { entries, date }) = do
         (Only date :. ids)
       Sqlite.executeMany conn
         [iii|
-              INSERT INTO entry (todo_date, id, description, detail, tags, completed_date) VALUES (?,?,?,?)
+              INSERT INTO entry (todo_date, id, description, detail, tags, completed_date) VALUES (?,?,?,?,?,?)
               ON CONFLICT(id, todo_date) DO UPDATE SET
                 description    = excluded.description,
                 detail         = excluded.detail,

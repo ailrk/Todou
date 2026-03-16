@@ -84,8 +84,8 @@ instance FromField EntryId where
 
 
 instance ToRow Entry where
-  toRow (Entry { entryId, description, completedDate }) =
-    toRow (entryId, description, completedDate)
+  toRow (Entry { entryId, description, detail, tags, completedDate }) =
+    toRow (entryId, description, detail, Text.unwords tags, completedDate)
 
 
 instance FromRow Entry where

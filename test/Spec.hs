@@ -44,9 +44,10 @@ pureTest = do
       parseDate "not-a-date" `shouldBe` Nothing
 
     it "ensures dumpEntry -> parseEntry is identity-ish" do
-      let entry = Entry (EntryId 5) "buy milk" (Just (fromGregorian 2023 12 15))
+      let entry = Entry (EntryId 5) "buy milk" "BUY MILK" [] (Just (fromGregorian 2023 12 15))
       let dumped = dumpEntry entry
       parseEntry dumped `shouldBe` Just entry
+
 
   describe "JSON Serialization" do
     it "round-trips an EntryId" $ property do
@@ -55,7 +56,7 @@ pureTest = do
         in Aeson.decode (Aeson.encode eId) `shouldBe` Just eId
 
     it "round-trips an Entry" do
-      let entry = Entry (EntryId 1) "Buy groceries" Nothing
+      let entry = Entry (EntryId 1) "Buy groceries" "Egg, Bacon, green onions" [] Nothing
       Aeson.decode (Aeson.encode entry) `shouldBe` Just entry
 
     it "sets 'dirty' to True when decoding a Todo" do
@@ -88,7 +89,7 @@ pureTest = do
 
     it "updateEntry: modifying an entry changes its value but keeps its ID" do
       let eid = EntryId 10
-      let entry = Entry eid "Original" Nothing
+      let entry = Entry eid "Original" "original" [] Nothing
       let todo = Todo [entry] (fromGregorian 2024 1 1) False
       let newDesc = "Updated Description"
 
@@ -219,13 +220,19 @@ instance Arbitrary Entry where
     eid <- arbitrary
     -- Generate a string of printable Unicode characters
     -- but filter out separators/control chars that trim/strip would remove
-    descStr <- listOf $ arbitraryUnicodeChar `suchThat` \c ->
-      isPrint c && not (isSeparator c)
+    let genValidString = listOf $ arbitraryUnicodeChar `suchThat` \c ->
+                           isPrint c && not (isSeparator c)
 
-    let desc = Text.strip (Text.pack descStr)
+    descRaw    <- genValidString
+    detailRaw  <- genValidString
+    tagsRaw    <- listOf genValidString
+
+    let desc   = Text.strip (Text.pack descRaw)
+        detail = Text.strip (Text.pack detailRaw)
+        tags   = filter (/= mempty) $ fmap (Text.strip . Text.pack) tagsRaw
 
     comp <- arbitrary
-    pure $ Entry eid desc comp
+    pure $ Entry eid desc detail tags comp
 
 
 instance Arbitrary Todo where
