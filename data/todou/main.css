@@ -407,7 +407,7 @@ nav .back-icon:hover::before {
 
 .entry-description label {
 	word-break: break-all;
-	padding: 15px 50px 15px 60px;
+	padding: 15px 50px 8px 60px;
 	display: block;
   white-space: pre-wrap;
 	line-height: 1.2;
