@@ -258,12 +258,13 @@ function renderTags(model: Model, entry: Entry): VNode {
 
 function renderDetailDescription(model: Model) {
   if (model.entry === null) return "No Entry";
-  let entry = model.entry;
+  let entry    = model.entry;
+  let inputRef = createRef();
 
   const classes =
     !model.entry ? "" :
     [ isCompleted(model.entry) ? "completed" : "",
-      model.entry.editingDescription ? "editing" : ""
+      model.entry.editingDescription ? "editing" : "non-editing"
     ].filter(Boolean).join(" ");
 
   function onCheck() {
@@ -274,6 +275,11 @@ function renderDetailDescription(model: Model) {
 
   function onClick() {
     editingEntryDescription(model, entry.id, true);
+
+    if (inputRef.current) {
+      let el = inputRef.current as HTMLElement;
+      el.focus();
+    }
   }
 
   function onKeydown(ev: KeyboardEvent) {
@@ -305,8 +311,8 @@ function renderDetailDescription(model: Model) {
         onclick={onCheck} />
       <input
         name="description"
-        readOnly={!(entry.editingDescription ?? false)}
         value={entry.description}
+        ref={inputRef}
         id={`todo-description-${entry.id}`}
         onclick={onClick}
         onkeydown={onKeydown}
@@ -321,11 +327,12 @@ function renderDetailDescription(model: Model) {
 
 function renderDetail(model: Model) {
   if (model.entry === null) return "No Entry";
-  let entry = model.entry;
+  let entry       = model.entry;
+  let textAreaRef = createRef();
 
   const classes =
     !model.entry ? "" :
-    [ model.entry.editingDetail ? "editing" : ""
+    [ model.entry.editingDetail ? "editing" : "non-editing"
     ].filter(Boolean).join(" ");
 
   function onClick() {
@@ -342,6 +349,11 @@ function renderDetail(model: Model) {
 
   function onInput(ev: Event) {
     updateEntry(model, entry.id, { detail: (ev.target as HTMLInputElement).value } );
+
+    if (textAreaRef.current) {
+      let el = textAreaRef.current as HTMLElement;
+      el.focus();
+    }
   }
 
   function onBlur() {
@@ -352,8 +364,8 @@ function renderDetail(model: Model) {
     <div class={ "entry-detail edit " + classes}>
       <textarea
         name="detail"
-        readOnly={!(entry.editingDetail ?? false)}
         value={entry.detail}
+        ref={textAreaRef}
         id={`todo-detail-${entry.id}`}
         onclick={onClick}
         onkeydown={onKeydown}

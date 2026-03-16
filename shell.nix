@@ -15,7 +15,6 @@ hspkgs.shellFor {
     pkgs.upx
     pkgs.zstd
     pkgs.zlib
-    pkgs.playwright
     pkgs.pkg-config
     pkgs.concurrently
     pkgs.nodePackages.typescript

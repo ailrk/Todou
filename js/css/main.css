@@ -355,6 +355,13 @@ nav .back-icon:hover::before {
 }
 
 
+.non-editing.edit {
+  cursor: default;
+  caret-color: transparent; /* hides blinking cursor when not editing */
+  user-select: none;
+}
+
+
 .destroy {
 	display: none;
 	position: absolute;

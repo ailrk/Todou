@@ -123,9 +123,10 @@ function renderDetailDescription(model) {
     if (model.entry === null)
         return "No Entry";
     let entry = model.entry;
+    let inputRef = createRef();
     const classes = !model.entry ? "" :
         [isCompleted(model.entry) ? "completed" : "",
-            model.entry.editingDescription ? "editing" : ""
+            model.entry.editingDescription ? "editing" : "non-editing"
         ].filter(Boolean).join(" ");
     function onCheck() {
         let formatted = new Date().toISOString().split('T')[0];
@@ -134,6 +135,10 @@ function renderDetailDescription(model) {
     }
     function onClick() {
         editingEntryDescription(model, entry.id, true);
+        if (inputRef.current) {
+            let el = inputRef.current;
+            el.focus();
+        }
     }
     function onKeydown(ev) {
         if (ev.key === "Enter" && !ev.shiftKey || ev.key === "Escape") {
@@ -153,15 +158,16 @@ function renderDetailDescription(model) {
     }
     return (h("div", { class: "entry-description edit " + classes },
         h("input", { class: "toggle", type: "checkbox", checked: isCompleted(entry), onclick: onCheck }),
-        h("input", { name: "description", readOnly: !(entry.editingDescription ?? false), value: entry.description, id: `todo-description-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur }),
+        h("input", { name: "description", value: entry.description, ref: inputRef, id: `todo-description-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur }),
         h("button", { class: "destroy", onclick: onDestroy })));
 }
 function renderDetail(model) {
     if (model.entry === null)
         return "No Entry";
     let entry = model.entry;
+    let textAreaRef = createRef();
     const classes = !model.entry ? "" :
-        [model.entry.editingDetail ? "editing" : ""
+        [model.entry.editingDetail ? "editing" : "non-editing"
         ].filter(Boolean).join(" ");
     function onClick() {
         editingEntryDetail(model, entry.id, true);
@@ -175,12 +181,16 @@ function renderDetail(model) {
     }
     function onInput(ev) {
         updateEntry(model, entry.id, { detail: ev.target.value });
+        if (textAreaRef.current) {
+            let el = textAreaRef.current;
+            el.focus();
+        }
     }
     function onBlur() {
         editingEntryDetail(model, entry.id, false);
     }
     return (h("div", { class: "entry-detail edit " + classes },
-        h("textarea", { name: "detail", readOnly: !(entry.editingDetail ?? false), value: entry.detail, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
+        h("textarea", { name: "detail", value: entry.detail, ref: textAreaRef, id: `todo-detail-${entry.id}`, onclick: onClick, onkeydown: onKeydown, oninput: onInput, onblur: onBlur })));
 }
 function renderDetailModal(model) {
     if (model.entry === null) {
