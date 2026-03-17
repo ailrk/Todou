@@ -2,7 +2,7 @@
   description = "todou";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/8f3cf34b8d2e2caf4ae5ee1d1fddc1baab4c5964";
+    nixpkgs.url = "github:NixOS/nixpkgs/6c5e707c6b5339359a9a9e215c5e66d6d802fd7a";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -12,8 +12,6 @@
         haskell = prev.haskell // {
           packageOverrides = hfinal: hprev:
             prev.haskell.packageOverrides hfinal hprev // {
-
-              scotty = hprev.scotty_0_22;
 
               todou = (hfinal.callPackage ./default.nix {}).overrideAttrs (old: {
                 nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ final.upx ];
@@ -47,6 +45,7 @@
           pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ overlay ];
+            config.allowBroken    = true;
             config.stripDebugInfo = true; # strip all debug infos
           };
           hspkgs = pkgs.haskellPackages;

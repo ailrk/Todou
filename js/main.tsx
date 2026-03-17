@@ -848,7 +848,6 @@ async function addEntryAPI(date: string, id: number, description: string) {
   return result.json();
 }
 
-// , completedDate: string | null, description?: string, detail?: string, tags?: string[]
 
 async function updateEntryAPI(date: string, id: number, delta: EditingDelta) {
   const formData = new URLSearchParams();

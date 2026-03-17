@@ -6,7 +6,6 @@ hspkgs.shellFor {
     hspkgs.haskell-language-server
     hspkgs.hlint
     hspkgs.cabal2nix
-    hspkgs.ghcprofview
     hspkgs.eventlog2html
     hspkgs.fast-tags
     hspkgs.graphmod
@@ -18,6 +17,14 @@ hspkgs.shellFor {
     pkgs.pkg-config
     pkgs.concurrently
     pkgs.nodePackages.typescript
+    pkgs.rust-analyzer
+    pkgs.cargo
+    pkgs.rustc
+    pkgs.atk
+    pkgs.glib
+    pkgs.gtk3
+    pkgs.webkitgtk_4_1
+    pkgs.libsoup_3
   ];
 
   shellHook = ''

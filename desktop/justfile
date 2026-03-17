@@ -1,0 +1,13 @@
+# Automate binary placement for Tauri
+prepare:
+    mkdir -p ./binaries
+    # Symlink/copy your compiled Haskell binary here
+    cp ../result/bin/todou ./binaries/todou-x86_64-unknown-linux-gnu
+
+# Build or Dev
+dev: prepare
+    cargo-tauri dev
+
+# Helper to clear old sidecars
+clean:
+    rm -rf binaries

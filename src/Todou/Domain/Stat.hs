@@ -12,7 +12,7 @@ import Data.Map (Map)
 import Todou.Domain.Todo (Todo (..), Entry (..), b64EncodePresenceMap)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (catMaybes)
-import Data.List (sort, foldl')
+import Data.List (sort)
 import Data.Containers.ListUtils (nubOrd)
 import Data.ByteString (ByteString)
 

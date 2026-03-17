@@ -547,7 +547,6 @@ async function addEntryAPI(date, id, description) {
     }
     return result.json();
 }
-// , completedDate: string | null, description?: string, detail?: string, tags?: string[]
 async function updateEntryAPI(date, id, delta) {
     const formData = new URLSearchParams();
     if (delta.completedDate !== undefined && delta.completedDate !== null) {
