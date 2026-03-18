@@ -2,7 +2,7 @@
   description = "todou";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/6c5e707c6b5339359a9a9e215c5e66d6d802fd7a";
+    nixpkgs.url = "github:NixOS/nixpkgs/48652e9d5aea46e555b3df87354280d4f29cd3a3";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
