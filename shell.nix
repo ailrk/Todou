@@ -18,6 +18,7 @@ hspkgs.shellFor {
     pkgs.concurrently
     pkgs.nodePackages.typescript
     pkgs.rust-analyzer
+    pkgs.cargo-tauri
     pkgs.cargo
     pkgs.rustc
     pkgs.atk

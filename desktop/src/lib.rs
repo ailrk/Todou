@@ -34,10 +34,10 @@ pub fn run() {
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
-                            println!("HASKELL STDOUT: {}", String::from_utf8_lossy(&line));
+                            print!("HASKELL STDOUT: {}", String::from_utf8_lossy(&line));
                         }
                         CommandEvent::Stderr(line) => {
-                            eprintln!("HASKELL STDERR: {}", String::from_utf8_lossy(&line));
+                            eprint!("HASKELL STDERR: {}", String::from_utf8_lossy(&line));
                         }
                         _ => {}
                     }
