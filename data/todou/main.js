@@ -1,5 +1,6 @@
 import { newVdom, h, createRef } from "./vdom.js";
 import { base64ToBitSet, fmtYM, getDateFromPath } from "./lib.js";
+import { initRouter, navigate } from "./router.js";
 function isCompleted(e) { return e.completedDate !== null; }
 /*
  * Render
@@ -11,7 +12,7 @@ function renderTodou(model) {
                 " ",
                 model.date,
                 " "),
-            h("span", { class: "stat-icon", onclick: (_) => { window.location.href = `/stat?date=${model.date}`; } })),
+            h("span", { class: "stat-icon", onclick: (_) => { navigate(`/stat?date=${model.date}`); } })),
         h("section", { class: "todoapp pg-todo" },
             renderInput(model),
             renderEntries(model),
@@ -311,7 +312,7 @@ function renderCalendarModal(model) {
         url += `/${model.calendar.year}-`;
         url += `${String(model.calendar.month + 1).padStart(2, '0')}-`;
         url += `${String(i).padStart(2, '0')}`;
-        window.location.href = url;
+        navigate(url);
     }
     function renderDay(i) {
         return (h("li", { class: today(i) + " " + current(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: () => jump(i) }, i));
@@ -524,13 +525,13 @@ function nextDay(model) {
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() + 1);
     const formatted = d.toISOString().split('T')[0];
-    window.location.href = `/${formatted}`;
+    navigate(`/${formatted}`);
 }
 function prevDay(model) {
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() - 1);
     const formatted = d.toISOString().split('T')[0];
-    window.location.href = `/${formatted}`;
+    navigate(`/${formatted}`);
 }
 /*
  * API
@@ -592,6 +593,25 @@ async function deleteEntryAPI(date, id) {
     return result.json();
 }
 /*
+ * Routers
+ */
+/* Route: /yyyy-mm-dd */
+async function routeDate(model, matched) {
+    const newDate = matched[0].replace("/", "").trim() || model.date;
+    if (newDate !== model.date) {
+        const response = await fetch(`/api/data/${newDate}`);
+        const data = await response.json();
+        model.date = newDate;
+        model.entries = data.entries;
+        const d = new Date(newDate + "T00:00:00");
+        model.calendar.year = d.getFullYear();
+        model.calendar.month = d.getMonth();
+    }
+}
+const routes = [
+    { path: /^\/(\d{4}-\d{2}-\d{2})$/, handler: routeDate },
+];
+/*
  * Main
  */
 async function main() {
@@ -632,7 +652,19 @@ async function main() {
         effects: [],
         root: document.getElementById("app")
     });
-    await vdom.render();
+    // Routing
+    initRouter(async (route) => {
+        for (const r of routes) {
+            const match = route.path.match(r.path);
+            if (match) {
+                await r.handler(model, match);
+                await vdom.render();
+                return;
+            }
+        }
+        // fall back to reload
+        window.location.assign(route.path + (window.location.search || ""));
+    });
 }
 let vdom;
 await main();
