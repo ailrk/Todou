@@ -4,7 +4,7 @@
  * intercepts <a> and lets you to pass a continuation where you
  * can write your routing logic there.
  * */
-function getRoute() {
+export function getRoute() {
     const params = new URLSearchParams(window.location.search);
     return {
         path: window.location.pathname,
@@ -15,7 +15,6 @@ function getRoute() {
  * to prevent a full page reload for internal links.
  * */
 export function initRouter(onRouter) {
-    console.log('initRouter');
     window.addEventListener('popstate', _ => onRouter(getRoute()));
     document.addEventListener('click', (ev) => {
         const anchor = ev.target.closest("a");
@@ -43,6 +42,7 @@ export function initRouter(onRouter) {
             onRouter(getRoute());
         }
     });
+    // Start the first route right away.
     onRouter(getRoute());
 }
 /* Navigate an internal link. This will triggers the 'popstate' eventhandler

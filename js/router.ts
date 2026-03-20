@@ -13,7 +13,7 @@ export interface Route {
 }
 
 
-function getRoute(): Route {
+export function getRoute(): Route {
   const params = new URLSearchParams(window.location.search);
   return {
     path: window.location.pathname,
@@ -25,7 +25,6 @@ function getRoute(): Route {
  * to prevent a full page reload for internal links.
  * */
 export function initRouter(onRouter: (route: Route) => void) {
-  console.log('initRouter');
 
   window.addEventListener('popstate', _ => onRouter(getRoute()));
   document.addEventListener('click', (ev: MouseEvent) => {
@@ -58,6 +57,8 @@ export function initRouter(onRouter: (route: Route) => void) {
       onRouter(getRoute());
     }
   });
+
+  // Start the first route right away.
   onRouter(getRoute());
 }
 

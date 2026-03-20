@@ -1,5 +1,5 @@
 import { newVdom } from "./vdom.js";
-import { initRouter, navigate } from "./router.js";
+import { initRouter } from "./router.js";
 import * as Todo from './todo.js';
 import * as Stat from './stat.js';
 /*
@@ -54,6 +54,21 @@ const routes = [
 /*
  * Main
  */
+let routeController = new AbortController();
+async function onRoute(model, vdom, route) {
+    routeController.abort();
+    routeController = new AbortController();
+    const { signal } = routeController;
+    for (const r of routes) {
+        const match = route.path.match(r.path);
+        if (match) {
+            await r.handler(model, match, route.params, signal);
+            await vdom.render();
+            return;
+        }
+    }
+    console.error("No frontend route matched:", route.path);
+}
 async function main() {
     let date = window.__INITIAL__DATE__;
     let model = {
@@ -66,25 +81,7 @@ async function main() {
         mkEffects: dispatchEffects,
         root: document.getElementById("app")
     });
-    let routeController = new AbortController();
-    // Routing
-    initRouter(async (route) => {
-        console.log('routing', route);
-        routeController.abort();
-        routeController = new AbortController();
-        const { signal } = routeController;
-        for (const r of routes) {
-            const match = route.path.match(r.path);
-            console.log(match);
-            if (match) {
-                await r.handler(model, match, route.params, signal);
-                await vdom.render();
-                return;
-            }
-        }
-        console.error("No frontend route matched:", route.path);
-    });
-    navigate(`/${model.date}`);
-    await vdom.render();
+    // Start routing
+    initRouter((route) => onRoute(model, vdom, route));
 }
 await main();

@@ -142,7 +142,7 @@ initView localTime =
       meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
       meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
       meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
-      meta_ [ name_ "apple-moble-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-mobile-web-app-title", content_ "Todou"]
       meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
       link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
       link_ [ rel_ "stylesheet", href_ "/main.css" ]
@@ -170,6 +170,15 @@ getTimeZoneFromCookies :: ActionT IO (Maybe ByteString)
 getTimeZoneFromCookies = do
   mCookies <- header "Cookie"
   pure (mCookies >>= lookup "timezone" . parseCookies . Text.encodeUtf8 . LText.toStrict)
+
+
+index :: ActionT IO ()
+index = do
+  getTimeZoneFromCookies >>= \case
+    Just tz -> do
+      localTime <- nowInlocalTime tz
+      html . Lucid.renderText $ initView localTime
+    Nothing -> html . Lucid.renderText $ trampoline "/"
 
 
 server :: Options -> Handle -> IO ()
@@ -200,12 +209,7 @@ server Options { port } handle = scotty port do
   get "/rev"                          do plain      $(embedFileRelative "data/todou/rev")
 
 
-  get "/" do
-    getTimeZoneFromCookies >>= \case
-      Just tz -> do
-        localTime <- nowInlocalTime tz
-        html . Lucid.renderText $ initView localTime
-      _ -> html . Lucid.renderText $ trampoline "/"
+  get "/" index
 
 
   -- render the todo data for one date.
@@ -398,7 +402,7 @@ server Options { port } handle = scotty port do
        else json (Err @Text "nothing is deleted")
 
 
-  notFound do redirect "/"
+  notFound index
 
 
 ------------------------------
