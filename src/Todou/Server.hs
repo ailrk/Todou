@@ -369,7 +369,7 @@ server Options { port } handle = scotty port do
 
 
   -- delete an entry
-  delete "/api/entry/date/:id" do
+  delete "/api/entry/:date/:id" do
     date    <- captureParam @Day "date"
     entryId <- captureParam @EntryId "id"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
@@ -384,7 +384,7 @@ server Options { port } handle = scotty port do
 
 
   -- delete completed entries
-  delete "/api/entry/delete/:date" do
+  delete "/api/entries/:date" do
     date       <- captureParam @Day "date"
     completed  <- queryFlag "completed"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case

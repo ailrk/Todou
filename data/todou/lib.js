@@ -17,6 +17,9 @@ export function getDateFromPath(defaultDate = new Date()) {
     const date = new Date(year, month - 1, day);
     return isNaN(date.getTime()) ? defaultDate : date;
 }
+export function dateToLocalISOString(date) {
+    return date.toLocaleString('sv').replace(' ', 'T');
+}
 /*
  * Presence View
  */

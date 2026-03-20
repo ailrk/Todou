@@ -5,9 +5,7 @@
   "identifier": "com.tauri.dev",
   "build": {
     "frontendDist": "../data/todou/",
-    "devUrl": "http://localhost:5555",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "devUrl": "http://localhost:5555"
   },
   "app": {
     "windows": [

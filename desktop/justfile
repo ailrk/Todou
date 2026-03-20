@@ -1,9 +1,11 @@
-# Extract the 'host' line from rustc version info
+
+target_triple := `rustc -vV | grep 'host:' | cut -d' ' -f2`
 
 prepare:
-  #!/usr/bin/env bash
-  mkdir -p ./binaries
-  cp ../result/bin/todou ./binaries/todou-{{`rustc -vV | grep 'host:' | cut -d' ' -f2`}}
+    #!/usr/bin/env bash
+    mkdir -p ./binaries
+    ln -sf ../../result/bin/todou "./binaries/todou-{{target_triple}}"
+    echo "Sidecar prepared: todou-{{target_triple}}"
 
 # Build or Dev
 dev:

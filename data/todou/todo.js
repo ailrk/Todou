@@ -1,5 +1,5 @@
 import { h, createRef } from "./vdom.js";
-import { base64ToBitSet, fmtYM } from "./lib.js";
+import { base64ToBitSet, dateToLocalISOString, fmtYM } from "./lib.js";
 import { navigate } from "./router.js";
 function isCompleted(e) { return e.completedDate !== null; }
 /*
@@ -434,10 +434,12 @@ async function deleteEntry(model, id) {
 async function checkEntry(model, id, check = true) {
     let completedDate = null;
     if (check) {
+        console.log('check');
         let nowDate = new Date();
         let modelDate = new Date(model.date + "T00:00:00");
         let date = nowDate < modelDate ? modelDate : nowDate;
-        completedDate = date.toISOString().split('T')[0];
+        console.log('now', nowDate, 'model', modelDate, 'd', date);
+        completedDate = dateToLocalISOString(date).split('T')[0];
     }
     console.log(completedDate);
     await updateEntryAPI(model.date, id, { completedDate: completedDate });
@@ -452,7 +454,7 @@ async function checkAllEntries(model, allCompleted) {
     let nowDate = new Date();
     let modelDate = new Date(model.date + "T00:00:00");
     let date = nowDate < modelDate ? modelDate : nowDate;
-    let formatted = date.toISOString().split('T')[0];
+    let formatted = dateToLocalISOString(date).split('T')[0];
     let completedDate = allCompleted ? formatted : null;
     await updateEntriesAPI(model.date, completedDate);
     model.entries.forEach(entry => {
@@ -524,13 +526,13 @@ async function prevCalendar(model) {
 function nextDay(model) {
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() + 1);
-    const formatted = d.toISOString().split('T')[0];
+    const formatted = dateToLocalISOString(d).split('T')[0];
     navigate(`/${formatted}`);
 }
 function prevDay(model) {
     const d = new Date(model.date + "T00:00:00");
     d.setDate(d.getDate() - 1);
-    const formatted = d.toISOString().split('T')[0];
+    const formatted = dateToLocalISOString(d).split('T')[0];
     navigate(`/${formatted}`);
 }
 /*

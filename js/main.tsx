@@ -1,5 +1,5 @@
 import { newVdom, VDom, VNode } from "./vdom.js";
-import { getRoute, initRouter, navigate, Route } from "./router.js";
+import { initRouter, navigate, Route } from "./router.js";
 import * as Todo from './todo.js';
 import * as Stat from './stat.js';
 
@@ -104,6 +104,11 @@ async function onRoute(model: Model, vdom: VDom, route: Route) {
 
 async function main() {
   let date = (window as any).__INITIAL__DATE__ as string;
+
+  if (window.location.pathname === '/') {
+    navigate(`/${date}`);
+  }
+
   let model = {
     tag: 'init',
     date: date,

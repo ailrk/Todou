@@ -29,6 +29,9 @@ export function getDateFromPath(defaultDate = new Date()) {
 }
 
 
+export function dateToLocalISOString(date: Date) {
+  return date.toLocaleString('sv').replace(' ', 'T');
+}
 
 /*
  * Presence View
