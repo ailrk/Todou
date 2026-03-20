@@ -48,9 +48,8 @@ import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer 
 import Todou.Option ( Bucket, StorageOption(..) )
 
 
-----------------------------------------
+------------------------------
 -- Parsing
-----------------------------------------
 
 
 data IniSection
@@ -197,9 +196,9 @@ formatMultiline :: Text -> Text
 formatMultiline txt =
   Text.replace "\n" " \\\n" (Text.stripEnd txt)
 
-----------------------------------------
+
+------------------------------
 -- Storage.Sqlite3
-----------------------------------------
 
 
 createSqliteSchema :: Sqlite.Connection -> IO ()
@@ -222,9 +221,8 @@ createSqliteSchema conn = do
   Sqlite.execute_ conn [i| CREATE INDEX IF NOT EXISTS idx_entry_todo_completed ON entry(todo_date, completed_date); |]
 
 
-----------------------------------------
+------------------------------
 -- Storage.S3
-----------------------------------------
 
 
 createS3Env :: IO Amazonka.Env
@@ -250,9 +248,8 @@ createS3Env = do
         Just v  -> URI.parseURI v
 
 
-----------------------------------------
+------------------------------
 -- Handle
-----------------------------------------
 
 
 data Handle
@@ -501,9 +498,8 @@ getPresences buffer@Buffer { todos } =
                                     Nothing -> packOneByte (addDays 1 d) (idx + bitsPerDay) acc
 
 
-----------------------------------------
+------------------------------
 -- Daemon
-----------------------------------------
 
 
 spawnFlusher :: Handle -> IO ThreadId

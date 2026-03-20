@@ -12,9 +12,8 @@ import System.Directory (doesDirectoryExist)
 import Text.Read (readMaybe)
 
 
-----------------------------------------
+------------------------------
 -- Options
-----------------------------------------
 
 
 type Bucket = Text

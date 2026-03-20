@@ -49,26 +49,38 @@ export type VNode
 export interface VDom {
   root: HTMLElement,
   render: () => Promise<void>,
-  vroot?: VNode
+}
+
+
+export interface VdomModel {
+  vdom?: VDom;
 }
 
 
 /** Create a new vdom object. The object can be tweaked after creation */
-export function newVdom<Model>({ model, root, render, effects }: { model: Model, root: HTMLElement, render: (model: Model) => VNode, effects: ((model: Model) => Promise<void>)[] }): VDom {
-  let _tree: VNode | undefined = undefined;
+export function newVdom<T extends VdomModel>({ model, root, render, mkEffects }:
+  { model: T,
+    root: HTMLElement,
+    render: (model: T) => VNode | null,
+    mkEffects: (model: T) => (() => Promise<void>)[]
+  }): VDom
+{
+  let _tree: VNode | null = null;
   let _root = root;
-  return {
+  let vdom = {
     render: async () => {
       const newTree = render(model);
+      const effects = mkEffects(model);
       updateElement(root, newTree, _tree);
       _tree = newTree;
       for (const eff of effects) {
-        await eff(model);
+        await eff();
       }
     },
     root: _root,
-    vroot: _tree
-  }
+  };
+  model.vdom = vdom;
+  return vdom;
 }
 
 
@@ -109,15 +121,16 @@ function createElement(vnode: VNode): Node {
 }
 
 
-/** Update an element. The existing element is the `index`th child of the parent. */
-function updateElement(parent: HTMLElement, newVNode?: VNode, oldVNode?: VNode, index = 0) {
+/* Update an element. The existing element is the `index`th child of the parent.
+ * If there is no newNode, we simply skip the diffing.
+ * */
+function updateElement(parent: HTMLElement, newVNode: VNode | null, oldVNode: VNode | null, index = 0) {
 
-  if (oldVNode === null || oldVNode === undefined) {
+  if (oldVNode === null) {
     if (newVNode) {
       parent.appendChild(createElement(newVNode));
-    } else {
-      console.error("[vdom] can't diff vdom without a vnode", newVNode);
     }
+
     return;
   }
 

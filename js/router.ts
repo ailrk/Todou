@@ -21,15 +21,38 @@ function getRoute(): Route {
   };
 }
 
-
 /* Start a new Router. It will intercept clicks on <a> tags
  * to prevent a full page reload for internal links.
  * */
 export function initRouter(onRouter: (route: Route) => void) {
+  console.log('initRouter');
+
   window.addEventListener('popstate', _ => onRouter(getRoute()));
   document.addEventListener('click', (ev: MouseEvent) => {
     const anchor = (ev.target as HTMLElement).closest("a");
     if (anchor && anchor.href && anchor.host === window.location.host) {
+
+      // CHECK 1
+      // If the link is just a fragment (e.g., <a href="#section">)
+      // or a dummy link (<a href="#">), let the browser handle it naturally.
+      const rawHref = anchor.getAttribute("href");
+      if (rawHref && rawHref.startsWith("#")) {
+        return;
+      }
+
+      // CHECK 2
+      // Check if we are already there.
+      const newPath = anchor.pathname + anchor.search;
+      const currentPath = window.location.pathname + window.location.search;
+
+      if (newPath === currentPath) {
+        ev.preventDefault();
+        // Scroll to top instead of re-routing
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // Proceed with frontend route.
       ev.preventDefault();
       window.history.pushState({}, anchor.pathname + anchor.search);
       onRouter(getRoute());
@@ -43,12 +66,6 @@ export function initRouter(onRouter: (route: Route) => void) {
  * which calls `onRouter` on the link with the `Route` as the parameter.
  * */
 export function navigate(path: string) {
-  if (path.startsWith("http") || path.startsWith("//")) {
-    // External link: Force a full browser redirect
-    window.location.href = path;
-  } else {
-    // Local link: SPA navigation
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }

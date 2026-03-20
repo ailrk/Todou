@@ -23,21 +23,23 @@ export function createRef() {
     return { current: null };
 }
 /** Create a new vdom object. The object can be tweaked after creation */
-export function newVdom({ model, root, render, effects }) {
-    let _tree = undefined;
+export function newVdom({ model, root, render, mkEffects }) {
+    let _tree = null;
     let _root = root;
-    return {
+    let vdom = {
         render: async () => {
             const newTree = render(model);
+            const effects = mkEffects(model);
             updateElement(root, newTree, _tree);
             _tree = newTree;
             for (const eff of effects) {
-                await eff(model);
+                await eff();
             }
         },
         root: _root,
-        vroot: _tree
     };
+    model.vdom = vdom;
+    return vdom;
 }
 function createElement(vnode) {
     if (typeof vnode === 'string')
@@ -70,14 +72,13 @@ function createElement(vnode) {
     }
     return el;
 }
-/** Update an element. The existing element is the `index`th child of the parent. */
+/* Update an element. The existing element is the `index`th child of the parent.
+ * If there is no newNode, we simply skip the diffing.
+ * */
 function updateElement(parent, newVNode, oldVNode, index = 0) {
-    if (oldVNode === null || oldVNode === undefined) {
+    if (oldVNode === null) {
         if (newVNode) {
             parent.appendChild(createElement(newVNode));
-        }
-        else {
-            console.error("[vdom] can't diff vdom without a vnode", newVNode);
         }
         return;
     }

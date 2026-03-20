@@ -1,10 +1,10 @@
-import { newVdom, h } from "./vdom.js";
+import { h } from "./vdom.js";
 import { base64ToBitSet, fmtYM } from "./lib.js";
 ;
 /*
  * Render
  */
-function renderStat(model) {
+export function renderStat(model) {
     return (h("div", { class: "todou-container", tabindex: "-1" },
         h("nav", null,
             h("span", null,
@@ -24,7 +24,8 @@ function renderCFDWidget(model) {
         renderCFDFooter(model)));
 }
 function renderCFDControls(model) {
-    async function showNMonths(i) {
+    async function showNMonths(i, ev) {
+        ev.preventDefault();
         switch (i) {
             case 1:
                 model.cfd = model.cfd1Month;
@@ -39,7 +40,7 @@ function renderCFDControls(model) {
                 model.cfd = model.cfd1Month;
                 break;
         }
-        await vdom.render();
+        await model.vdom.render();
     }
     return (h("header", { class: "cfd-controls" },
         h("div", { class: "dropdown" },
@@ -48,9 +49,9 @@ function renderCFDControls(model) {
                 " - ",
                 model.cfd.to),
             h("div", { class: "dropdown-content" },
-                h("a", { href: "#", onclick: (_) => showNMonths(1) }, "1 Months"),
-                h("a", { href: "#", onclick: (_) => showNMonths(2) }, "2 Months"),
-                h("a", { href: "#", onclick: (_) => showNMonths(3) }, "3 Months"))),
+                h("a", { href: "#", onclick: (ev) => showNMonths(1, ev) }, "1 Months"),
+                h("a", { href: "#", onclick: (ev) => showNMonths(2, ev) }, "2 Months"),
+                h("a", { href: "#", onclick: (ev) => showNMonths(3, ev) }, "3 Months"))),
         h("div", { class: "legend" },
             h("span", { style: "color: #2ecc71; margin-right: 10px;" }, "\u25CF Completed"),
             h("span", { style: "color: #3498db;" }, "\u25CF Ongoing"))));
@@ -340,25 +341,32 @@ async function nextCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    await vdom.render();
+    await model.vdom.render();
 }
 async function prevCalendar(model) {
     let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
     model.calendar.year = date.getFullYear();
     model.calendar.month = date.getMonth();
-    await vdom.render();
+    await model.vdom.render();
 }
 /*
- * Main
+ * Effects
  */
-async function main() {
-    let el = document.getElementById("model");
-    if (!el) {
-        throw Error("missing initial model");
-    }
-    let model = JSON.parse(el.textContent);
-    el.remove();
-    console.log(model);
+export function mkEffects(model) {
+    return [
+        async () => await drawCFD(model),
+        async () => {
+            const canvas = document.getElementById("cfd-canvas-datapoints");
+            drawCFDDatapoints(canvas, model);
+            canvas.addEventListener('mousemove', evt => drawCFDDatapoints(canvas, model, evt));
+        }
+    ];
+}
+/*
+ * Init
+ */
+export async function init(model, signal) {
+    console.log('init stat');
     model.cfd = model.cfd1Month;
     let date = new Date(model.date + "T00:00:00"); // use local time
     model.calendar = {
@@ -369,21 +377,6 @@ async function main() {
     // Register top level event listeners
     document.body.addEventListener('wheel', (_) => {
         requestAnimationFrame(async () => await drawCFD(model));
-    });
-    vdom = newVdom({
-        model: model,
-        render: renderStat,
-        effects: [
-            async () => await drawCFD(model),
-            async () => {
-                const canvas = document.getElementById("cfd-canvas-datapoints");
-                drawCFDDatapoints(canvas, model);
-                canvas.addEventListener('mousemove', evt => drawCFDDatapoints(canvas, model, evt));
-            }
-        ],
-        root: document.getElementById("app")
-    });
-    await vdom.render();
+    }, { signal });
+    await model.vdom.render();
 }
-let vdom;
-await main();

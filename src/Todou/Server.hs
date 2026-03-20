@@ -1,9 +1,7 @@
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Todou.Server where
 -- Backend for Todou app
@@ -16,7 +14,7 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
-import Data.FileEmbed qualified as FileEmbed
+import Data.FileEmbed (embedFileRelative)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.String.Interpolate (iii)
@@ -24,6 +22,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Text.Lazy qualified as LText
+import Data.Text.Lazy.Encoding qualified as LText
 import Data.Time
     ( Day,
       defaultTimeLocale,
@@ -39,12 +38,11 @@ import Lucid qualified
 import Network.HTTP.Types (status500)
 import Network.Wai.Middleware.RequestLogger (logStdout)
 import Text.Read (readMaybe)
-import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header, formParamMaybe)
+import Web.Scotty (get, scotty, html, raw, setHeader, post, Parsable(..), json, ActionM, body, captureParam, status, text, middleware, delete, redirect, put, queryParamMaybe, captureParamMaybe, header, formParamMaybe, notFound)
 import Web.Cookie (parseCookies)
 import Data.Time.Calendar.Month (pattern MonthDay, Month)
 import Todou.Domain.Stat (CFR (..), createCFSegmentFromMonth)
 import Todou.Domain.Todo (Todo(..), Entry (..), Todo (..), EntryId (..), Buffer (..), pattern TodoLoaded, pattern TodoNotExists, pattern TodoNotLoaded, Model(..), updateTodo, deleteEntry, updateEntry, insertTodo, todoToModel)
-import Todou.Domain.Todo qualified as Todo
 import Todou.Domain.Stat qualified as Stat
 import Todou.Option
 import Todou.Store (Handle, getBufferMVar, flush, getPresences, loadTodo, modifyBuffer)
@@ -52,9 +50,8 @@ import Web.Scotty.Trans (ActionT)
 import Data.List (iterate')
 
 
-----------------------------------------
+------------------------------
 -- Orphan
-----------------------------------------
 
 
 instance Parsable Day where
@@ -78,9 +75,8 @@ instance Parsable EntryId where
       Nothing -> Left "Invalid EntryId"
 
 
-----------------------------------------
+------------------------------
 -- Server
-----------------------------------------
 
 
 newtype Ok a = Ok a
@@ -104,32 +100,18 @@ instance ToJSON a => ToJSON (Err a) where
       ]
 
 
+raw' :: ByteString -> ActionM ()
+raw' = raw . ByteString.fromStrict
+
+
 json', javascript, css, png, ico, svg, plain :: ByteString -> ActionM ()
-json' bytes      = setHeader "Content-Type" "application/json" >> (raw . ByteString.fromStrict $ bytes)
-javascript bytes = setHeader "Content-Type" "application/javascript" >> (raw . ByteString.fromStrict $ bytes)
-css bytes        = setHeader "Content-Type" "text/css" >> (raw . ByteString.fromStrict $ bytes)
-png bytes        = setHeader "Content-Type" "image/png" >> (raw . ByteString.fromStrict $ bytes)
-ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> (raw . ByteString.fromStrict $ bytes)
-svg bytes        = setHeader "Content-Type" "image/svg+xml" >> (raw . ByteString.fromStrict $ bytes)
-plain bytes      = setHeader "Content-Type" "text/plain" >> (raw . ByteString.fromStrict $ bytes)
-
-
-withTodouHead :: Html () -> Html ()
-withTodouHead content =
-  html_ [ lang_ "en" ] do
-    head_ do
-      meta_ [ charset_ "UTF-8" ]
-      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" ]
-      meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
-      meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
-      meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
-      meta_ [ name_ "apple-moble-web-app-title", content_ "Todou"]
-      meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
-      link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
-      link_ [ rel_ "stylesheet", href_ "/main.css" ]
-      link_ [ rel_ "manifest", href_ "/manifest.json" ]
-      title_ "Todou"
-    content
+json' bytes      = setHeader "Content-Type" "application/json" >> raw' bytes
+javascript bytes = setHeader "Content-Type" "application/javascript" >> raw' bytes
+css bytes        = setHeader "Content-Type" "text/css" >> raw' bytes
+png bytes        = setHeader "Content-Type" "image/png" >> raw' bytes
+ico bytes        = setHeader "Content-Type" "image/vnd.microsoft.icon" >> raw' bytes
+svg bytes        = setHeader "Content-Type" "image/svg+xml" >> raw' bytes
+plain bytes      = setHeader "Content-Type" "text/plain" >> raw' bytes
 
 
 -- A tranpoline page that sets the cookies
@@ -148,22 +130,29 @@ trampoline href =
                     |]
 
 
-todoView :: Todo.Model -> Html ()
-todoView model =
-  withTodouHead do
+-- | The initial html with the SPA code. A script will write the current date
+-- string into the `window` object. The frontend code will use this date string
+-- to route to a todo page locally.
+initView :: LocalTime -> Html ()
+initView localTime =
+  html_ [ lang_ "en" ] do
+    head_ do
+      meta_ [ charset_ "UTF-8" ]
+      meta_ [ name_ "viewport", content_ "width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" ]
+      meta_ [ httpEquiv_ "X-UA-Compatible", content_ "ie=edge" ]
+      meta_ [ name_ "mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-mobile-web-app-capable", content_ "yes" ]
+      meta_ [ name_ "apple-moble-web-app-title", content_ "Todou"]
+      meta_ [ name_ "apple-mobile-web-app-status-bar-style", content_ "default" ]
+      link_ [ rel_ "apple-touch-icon", sizes_ "180x180", href_ "/apple-touch-icon.png"]
+      link_ [ rel_ "stylesheet", href_ "/main.css" ]
+      link_ [ rel_ "manifest", href_ "/manifest.json" ]
+      title_ "Todou"
     body_ do
       div_ [ id_ "app" ] mempty
-      script_ [ id_ "model" ] (Aeson.encode model)
+      let date = LText.decodeUtf8 (Aeson.encode (localTime.localDay))
+      script_ [iii| window.__INITIAL__DATE__ = #{date} |]
       script_ [ src_ "main.js", type_ "module" ] (mempty @Text)
-
-
-statView :: Stat.Model -> Html ()
-statView model = do
-  withTodouHead do
-    body_ do
-      div_ [ id_ "app" ] mempty
-      script_ [ id_ "model" ] (Aeson.encode model)
-      script_ [ src_ "stat.js", type_ "module" ] (mempty @Text)
 
 
 nowInlocalTime :: MonadIO m => ByteString -> m LocalTime
@@ -187,40 +176,44 @@ server :: Options -> Handle -> IO ()
 server Options { port } handle = scotty port do
   middleware logStdout
 
-  get "/main.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/main.js")
-  get "/stat.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/stat.js")
-  get "/lib.js"                       do javascript $(FileEmbed.embedFileRelative "data/todou/lib.js")
-  get "/vdom.js"                      do javascript $(FileEmbed.embedFileRelative "data/todou/vdom.js")
-  get "/web-app-manifest-192x192.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-192x192.png")
-  get "/web-app-manifest-512x512.png" do png        $(FileEmbed.embedFileRelative "data/todou/web-app-manifest-512x512.png")
-  get "/apple-touch-icon.png"         do png        $(FileEmbed.embedFileRelative "data/todou/apple-touch-icon.png")
-  get "/favicon.ico"                  do ico        $(FileEmbed.embedFileRelative "data/todou/favicon.ico")
-  get "/manifest.json"                do json'      $(FileEmbed.embedFileRelative "data/todou/manifest.json")
-  get "/main.css"                     do css        $(FileEmbed.embedFileRelative "data/todou/main.css")
-  get "/left-arrow.svg"               do svg        $(FileEmbed.embedFileRelative "data/todou/left-arrow.svg")
-  get "/right-arrow.svg"              do svg        $(FileEmbed.embedFileRelative "data/todou/right-arrow.svg")
-  get "/x.svg"                        do svg        $(FileEmbed.embedFileRelative "data/todou/x.svg")
-  get "/calendar.svg"                 do svg        $(FileEmbed.embedFileRelative "data/todou/calendar.svg")
-  get "/stat.svg"                     do svg        $(FileEmbed.embedFileRelative "data/todou/stat.svg")
-  get "/back.svg"                     do svg        $(FileEmbed.embedFileRelative "data/todou/back.svg")
-  get "/favicon.svg"                  do svg        $(FileEmbed.embedFileRelative "data/todou/favicon.svg")
-  get "/rev"                          do plain      $(FileEmbed.embedFileRelative "data/todou/rev")
+
+  -- static files are embeded.
+  get "/main.js"                      do javascript $(embedFileRelative "data/todou/main.js")
+  get "/todo.js"                      do javascript $(embedFileRelative "data/todou/todo.js")
+  get "/stat.js"                      do javascript $(embedFileRelative "data/todou/stat.js")
+  get "/lib.js"                       do javascript $(embedFileRelative "data/todou/lib.js")
+  get "/router.js"                    do javascript $(embedFileRelative "data/todou/router.js")
+  get "/vdom.js"                      do javascript $(embedFileRelative "data/todou/vdom.js")
+  get "/web-app-manifest-192x192.png" do png        $(embedFileRelative "data/todou/web-app-manifest-192x192.png")
+  get "/web-app-manifest-512x512.png" do png        $(embedFileRelative "data/todou/web-app-manifest-512x512.png")
+  get "/apple-touch-icon.png"         do png        $(embedFileRelative "data/todou/apple-touch-icon.png")
+  get "/favicon.ico"                  do ico        $(embedFileRelative "data/todou/favicon.ico")
+  get "/manifest.json"                do json'      $(embedFileRelative "data/todou/manifest.json")
+  get "/main.css"                     do css        $(embedFileRelative "data/todou/main.css")
+  get "/left-arrow.svg"               do svg        $(embedFileRelative "data/todou/left-arrow.svg")
+  get "/right-arrow.svg"              do svg        $(embedFileRelative "data/todou/right-arrow.svg")
+  get "/x.svg"                        do svg        $(embedFileRelative "data/todou/x.svg")
+  get "/calendar.svg"                 do svg        $(embedFileRelative "data/todou/calendar.svg")
+  get "/stat.svg"                     do svg        $(embedFileRelative "data/todou/stat.svg")
+  get "/back.svg"                     do svg        $(embedFileRelative "data/todou/back.svg")
+  get "/favicon.svg"                  do svg        $(embedFileRelative "data/todou/favicon.svg")
+  get "/rev"                          do plain      $(embedFileRelative "data/todou/rev")
 
 
   get "/" do
     getTimeZoneFromCookies >>= \case
       Just tz -> do
         localTime <- nowInlocalTime tz
-        redirect ("/" <> LText.fromStrict (formatDayYMD localTime.localDay))
+        html . Lucid.renderText $ initView localTime
       _ -> html . Lucid.renderText $ trampoline "/"
 
 
   -- render the todo data for one date.
-  get "/:date" do
+  get "/api/todo/:date" do
     date <- captureParam @Day "date"
 
     when (date > fromGregorian 9999 12 31) do
-      redirect "/"
+      redirect "/404"
 
     let bufferMvar = getBufferMVar handle
 
@@ -245,8 +238,7 @@ server Options { port } handle = scotty port do
 
     case eModel of
       Right model -> do
-        html . Lucid.renderText
-        $ todoView model
+        json model
           { presenceMap = presenceMap
           , firstDay    = firstDay
           }
@@ -256,7 +248,7 @@ server Options { port } handle = scotty port do
 
 
   -- Show statistic page
-  get "/stat" do
+  get "/api/stat" do
 
     getTimeZoneFromCookies >>= \case
       Just tz -> do
@@ -285,21 +277,21 @@ server Options { port } handle = scotty port do
             seg1   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start1..end] ]
             seg2   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start2..end] ]
             seg3   = foldr1 (<>) [ createCFSegmentFromMonth m buffer.todos | m <- [start3..end] ]
-            model  = Stat.Model { date        = date
-                                , cfd1Month   = Stat.toCFD (CFRMonthRange start1 end) seg1
-                                , cfd2Month   = Stat.toCFD (CFRMonthRange start2 end) seg2
-                                , cfd3Month   = Stat.toCFD (CFRMonthRange start3 end) seg3
-                                , presenceMap = presenceMap
-                                , firstDay    = firstDay
-                                }
 
-        html . Lucid.renderText $ statView model
+        json Stat.Model { date        = date
+                        , cfd1Month   = Stat.toCFD (CFRMonthRange start1 end) seg1
+                        , cfd2Month   = Stat.toCFD (CFRMonthRange start2 end) seg2
+                        , cfd3Month   = Stat.toCFD (CFRMonthRange start3 end) seg3
+                        , presenceMap = presenceMap
+                        , firstDay    = firstDay
+                        }
+
       Nothing ->
         html . Lucid.renderText $ trampoline "/stat"
 
 
   -- add a new entry
-  post "/entry/add/:date/:id" do
+  post "/api/entry/:date/:id" do
     date        <- captureParam @Day "date"
     entryId     <- captureParam @EntryId "id"
     description <- Text.decodeUtf8 . ByteString.toStrict <$> body
@@ -331,7 +323,7 @@ server Options { port } handle = scotty port do
 
 
   -- update an entry
-  put "/entry/update/:date/:id" do
+  put "/api/entry/:date/:id" do
     date         <- captureParam @Day "date"
     mEntryId     <- captureParamMaybe @EntryId "id"
     mCompletedAt <- formParamMaybe @Day "completedDate"
@@ -373,7 +365,7 @@ server Options { port } handle = scotty port do
 
 
   -- delete an entry
-  delete "/entry/delete/:date/:id" do
+  delete "/api/entry/date/:id" do
     date    <- captureParam @Day "date"
     entryId <- captureParam @EntryId "id"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
@@ -388,7 +380,7 @@ server Options { port } handle = scotty port do
 
 
   -- delete completed entries
-  delete "/entry/delete/:date" do
+  delete "/api/entry/delete/:date" do
     date       <- captureParam @Day "date"
     completed  <- queryFlag "completed"
     hasDeleted <- liftIO $ loadTodo handle date >>= \case
@@ -406,9 +398,11 @@ server Options { port } handle = scotty port do
        else json (Err @Text "nothing is deleted")
 
 
-----------------------------------------
+  notFound do redirect "/"
+
+
+------------------------------
 -- Scotty.Extended
-----------------------------------------
 
 
 queryFlag :: LText.Text -> ActionM Bool

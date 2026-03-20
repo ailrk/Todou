@@ -1,4 +1,4 @@
-import { newVdom, VNode, h, VDom } from "./vdom.js";
+import { VNode, h, VDom } from "./vdom.js";
 import { base64ToBitSet, fmtYM, PresenceView, YMD } from "./lib.js";
 
 
@@ -17,7 +17,11 @@ interface CFD {
 }
 
 
-interface Model {
+export interface Model {
+  // tag
+  tag: "stat";
+
+  // remote
   date: string;
   cfd1Month: CFD;
   cfd2Month: CFD;
@@ -30,6 +34,9 @@ interface Model {
   calendar: YMD;
   showNMonthsCFD: number;
   cfd: CFD;
+
+  // shared local
+  vdom: VDom;
 }
 
 
@@ -37,7 +44,7 @@ interface Model {
  * Render
  */
 
-function renderStat(model: Model): VNode {
+export function renderStat(model: Model): VNode {
   return (
     <div class="todou-container" tabindex="-1">
       <nav>
@@ -69,14 +76,15 @@ function renderCFDWidget(model: Model): VNode {
 
 
 function renderCFDControls(model: Model): VNode {
-  async function showNMonths(i: number) {
+  async function showNMonths(i: number, ev: MouseEvent) {
+    ev.preventDefault();
     switch (i) {
         case 1: model.cfd  = model.cfd1Month; break;
         case 2: model.cfd  = model.cfd2Month; break;
         case 3: model.cfd  = model.cfd3Month; break;
         default: model.cfd = model.cfd1Month; break;
     }
-    await vdom.render();
+    await model.vdom.render();
   }
 
   return (
@@ -84,9 +92,9 @@ function renderCFDControls(model: Model): VNode {
       <div class="dropdown">
         <button class="dropbtn">{model.cfd.from} - {model.cfd.to}</button>
         <div class="dropdown-content">
-          <a href="#" onclick={(_: MouseEvent) => showNMonths(1)}>1 Months</a>
-          <a href="#" onclick={(_: MouseEvent) => showNMonths(2)}>2 Months</a>
-          <a href="#" onclick={(_: MouseEvent) => showNMonths(3)}>3 Months</a>
+          <a href="#" onclick={(ev: MouseEvent) => showNMonths(1, ev)}>1 Months</a>
+          <a href="#" onclick={(ev: MouseEvent) => showNMonths(2, ev)}>2 Months</a>
+          <a href="#" onclick={(ev: MouseEvent) => showNMonths(3, ev)}>3 Months</a>
         </div>
       </div>
       <div class="legend">
@@ -460,7 +468,7 @@ async function nextCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month + 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  await vdom.render()
+  await model.vdom.render()
 }
 
 
@@ -468,23 +476,33 @@ async function prevCalendar(model: Model) {
   let date = new Date(model.calendar.year, model.calendar.month - 1, 1);
   model.calendar.year = date.getFullYear();
   model.calendar.month = date.getMonth();
-  await vdom.render()
+  await model.vdom.render()
 }
 
 
 /*
- * Main
+ * Effects
  */
 
 
-async function main() {
-  let el = document.getElementById("model");
-  if (!el) {
-    throw Error("missing initial model")
-  }
+export function mkEffects(model: Model) {
+  return [
+    async () => await drawCFD(model),
+    async () => {
+      const canvas = document.getElementById("cfd-canvas-datapoints") as HTMLCanvasElement;
+      drawCFDDatapoints(canvas, model);
+      canvas.addEventListener('mousemove', evt => drawCFDDatapoints(canvas, model, evt));
+    }
+  ];
+}
 
-  let model: Model = JSON.parse(el.textContent!); el.remove();
-  console.log(model)
+/*
+ * Init
+ */
+
+
+export async function init(model: Model, signal: AbortSignal) {
+  console.log('init stat')
 
   model.cfd = model.cfd1Month;
 
@@ -497,28 +515,12 @@ async function main() {
 
   model.presence = await base64ToBitSet(model.presenceMap);
 
+
   // Register top level event listeners
   document.body.addEventListener('wheel', (_: WheelEvent) => {
     requestAnimationFrame(async () => await drawCFD(model));
-  })
+  }, { signal });
 
-  vdom = newVdom({
-    model: model,
-    render: renderStat,
-    effects: [
-      async () => await drawCFD(model),
-      async () => {
-        const canvas = document.getElementById("cfd-canvas-datapoints") as HTMLCanvasElement;
-        drawCFDDatapoints(canvas, model);
-        canvas.addEventListener('mousemove', evt => drawCFDDatapoints(canvas, model, evt));
-      }
-    ],
-    root: document.getElementById("app")!
-  });
-
-  await vdom.render();
+  await model.vdom.render();
 }
 
-
-let vdom: VDom;
-await main();

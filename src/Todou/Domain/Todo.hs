@@ -23,9 +23,9 @@ import Data.Text qualified as Text
 import Data.Functor ((<&>))
 
 
-----------------------------------------
+------------------------------
 -- Domain.Todo
-----------------------------------------
+
 
 -- A Todou is a list of Todos. A Todo is a list of entries.
 -- Each Todo represents the todo list of one day.
@@ -191,11 +191,12 @@ data Model = Model
 
 instance ToJSON Model where
   toJSON model = Aeson.object
-    [ "entries"      .= model.entries
-    , "nextId"       .= model.nextId
-    , "date"         .= model.date
-    , "presenceMap"  .= b64EncodePresenceMap model.presenceMap
-    , "firstDay"     .= model.firstDay
+    [ "entries"     .= model.entries
+    , "nextId"      .= model.nextId
+    , "date"        .= model.date
+    , "presenceMap" .= b64EncodePresenceMap model.presenceMap
+    , "firstDay"    .= model.firstDay
+    , "tag"         .= Text.pack "todo"
     ]
 
 

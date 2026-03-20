@@ -15,10 +15,11 @@ import Data.Maybe (catMaybes)
 import Data.List (sort)
 import Data.Containers.ListUtils (nubOrd)
 import Data.ByteString (ByteString)
+import Data.Text qualified as Text
 
-----------------------------------------
+------------------------------
 -- Domain.Stat
-----------------------------------------
+
 
 -- | Cumulative Flow Resolution. This type indicates the scale of the
 -- CF diagram.
@@ -170,9 +171,8 @@ createCFSegmentFromMonth month todos =
                  }
 
 
-----------------------------------------
+------------------------------
 -- DTO
-----------------------------------------
 
 
 toCFD :: CFR -> CFSegment -> CFD
@@ -222,12 +222,12 @@ instance ToJSON Model where
     , "cfd3Month"   .= model.cfd3Month
     , "presenceMap" .= b64EncodePresenceMap model.presenceMap
     , "firstDay"    .= model.firstDay
+    , "tag"         .= Text.pack "stat"
     ]
 
 
-----------------------------------------
+------------------------------
 -- Helper
-----------------------------------------
 
 
 rangeQuery :: (Ord k, Enum k) => Maybe k -> Maybe k -> Map k a -> [a]
