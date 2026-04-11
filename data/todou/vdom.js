@@ -1,40 +1,45 @@
-/**
- * MINIMAL VDOM (v1.0.0)
- * * DISTRO: Single-file TypeScript
- * * TSCONFIG REQUIREMENTS:
- * {
- * "compilerOptions": {
- * "jsx": "react",
- * "jsxFactory": "h",
- * "jsxFragmentFactory": "Fragment",
- * "strict": true
- * }
- * }
+/** MINIMAL VDOM (v1.0.0)
  *
- * * USAGE:
- * import { newVdoma, VDom, VNode } from './vdom.ts';
+ * * To make this work, add these 3 lines to your existing tsconfig.json:
+ *  "jsx": "react",
+ *  "jsxFactory": "h",
+ *  "jsxFragmentFactory": "Fragment"
  *
+ * This is a minimal virtual dom implementation, the goal is to avoid heavy
+ * dependencies and provide a single-file, self-contained package for writing
+ * single page application. It comes with a virtual dom, JSX support, and a
+ * frontend router.
  *
- * Instead of manipulating DOM elements directly, the virtual DOM (VDOM) constructs an in-memory
- * representation of the DOM tree whenever the page updates. It then compares this new VDOM tree
- * with the previous one, and translates the structural differences into the minimal set of required
- * DOM operations. This process of comparing VDOMs and applying updates is called **reconciliation**.
+ * Instead of manipulating DOM elements directly, the virtual DOM (VDOM)
+ * constructs an in-memory representation of the DOM tree whenever the page
+ * updates. It then compares this new VDOM tree with the previous one, and
+ * translates the structural differences into the minimal set of required DOM
+ * operations. This process of comparing VDOMs and applying updates is called
+ * **reconciliation**.
  *
- * A real DOM element consists of **attributes** and **properties**. Attributes are static fields
- * from the HTML markup, while properties are dynamic fields reflecting the current state of the element.
- * In this VDOM, `VNode` contains only `attrs`, which represent both attributes and property updates.
+ * A real DOM element consists of **attributes** and **properties**. Attributes
+ * are static fields from the HTML markup, while properties are dynamic fields
+ * reflecting the current state of the element. In this VDOM, `VNode` contains
+ * only `attrs`, which represent both attributes and property updates.
  *
- * The diffing algorithm works recursively on the tree structure of the VDOM. At each step, it tries
- * to minimize changes by **reusing as much of the existing structure as possible**. When a completely
- * different node is encountered, the old node is discarded and a new one is constructed.
+ * The diffing algorithm works recursively on the tree structure of the VDOM.
+ * At each step, it tries to minimize changes by **reusing as much of the
+ * existing structure as possible**. When a completely different node is
+ * encountered, the old node is discarded and a new one is constructed.
  *
- * Special care is needed for **lists**. List items can be inserted, deleted, or reordered. If children
- * are compared only by index, removing an element in the middle of a list can cause all subsequent
- * items to shift positions, breaking the diffing logic. To handle this, elements can have a stable
- * `key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
- * first, and fall back to index-based comparison if no key is provided.
+ * Special care is needed for **lists**. List items can be inserted, deleted,
+ * or reordered. If children are compared only by index, removing an element in
+ * the middle of a list can cause all subsequent items to shift positions,
+ * breaking the diffing logic. To handle this, elements can have a stable `key`
+ * that uniquely identifies them. The diffing algorithm will prioritize
+ * matching keyed elements first, and fall back to index-based comparison if no
+ * key is provided.
  *
  */
+/* ------------------------------
+ * Version
+ * */
+export const VERSION = "1.0.0";
 export function createRef() {
     return { current: null };
 }
@@ -53,6 +58,7 @@ export function newVdom({ model, root, render, mkEffects }) {
             }
         },
         root: _root,
+        version: VERSION
     };
     model.vdom = vdom;
     return vdom;
@@ -60,14 +66,6 @@ export function newVdom({ model, root, render, mkEffects }) {
 function createElement(vnode) {
     if (typeof vnode === 'string')
         return document.createTextNode(vnode);
-    // If it's the JSX fragment tag, create a transparent container
-    if (vnode.tag === "fragment") {
-        const fragment = document.createDocumentFragment();
-        vnode.children?.forEach(child => {
-            fragment.appendChild(createElement(child));
-        });
-        return fragment;
-    }
     const el = document.createElement(vnode.tag);
     if (vnode.ref) {
         vnode.ref.current = el;
@@ -267,8 +265,7 @@ function keyIsHandler(k, v) {
 /* ------------------------------
  * JSX related
  * */
-export const Fragment = "fragment";
-/** JSX factory: turns JSX into our VNode */
+/* JSX factory. */
 export function h(tag, props, ...children) {
     // Normalize children (flatten, drop null/undefined, keep strings)
     const flatChildren = [];
@@ -282,16 +279,8 @@ export function h(tag, props, ...children) {
             flatChildren.push(c);
         }
     });
-    // Handle Fragment
-    if (tag === Fragment) {
-        return {
-            tag: "fragment", // A internal string identifier
-            children: flatChildren,
-            attrs: {}
-        };
-    }
     return {
-        tag,
+        tag: tag,
         attrs: props || {},
         children: flatChildren.length > 0 ? flatChildren : undefined,
         key: props?.key,
@@ -305,8 +294,8 @@ export function getRoute() {
         params: Object.fromEntries(params)
     };
 }
-/* Start a new Router. It will intercept clicks on <a> tags
- * to prevent a full page reload for internal links.
+/* Start a new Router. It will intercept clicks on <a> tags to prevent a full
+ * page reload for internal links.
  * */
 export function initRouter(onRouter) {
     window.addEventListener('popstate', _ => onRouter(getRoute()));
@@ -314,8 +303,8 @@ export function initRouter(onRouter) {
         const anchor = ev.target.closest("a");
         if (anchor && anchor.href && anchor.host === window.location.host) {
             // CHECK 1
-            // If the link is just a fragment (e.g., <a href="#section">)
-            // or a dummy link (<a href="#">), let the browser handle it naturally.
+            // If the link is just a fragment (e.g., <a href="#section">) or a dummy
+            // link (<a href="#">), let the browser handle it naturally.
             const rawHref = anchor.getAttribute("href");
             if (rawHref && rawHref.startsWith("#")) {
                 return;
