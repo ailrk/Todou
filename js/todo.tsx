@@ -1,6 +1,5 @@
-import { VNode, h, VDom, createRef } from "./vdom.js";
+import { VNode, h, VDom, createRef, navigate } from "./vdom.js";
 import { base64ToBitSet, dateToLocalISOString, fmtYM, PresenceView, YMD } from "./lib.js";
-import { navigate } from "./router.js";
 
 
 type EntryId = number;

@@ -1,5 +1,4 @@
-import { newVdom, VDom, VNode } from "./vdom.js";
-import { initRouter, navigate, Route } from "./router.js";
+import { newVdom, VDom, VNode, initRouter, navigate, Route } from "./vdom.js";
 import * as Todo from './todo.js';
 import * as Stat from './stat.js';
 

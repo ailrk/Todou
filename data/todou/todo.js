@@ -1,6 +1,5 @@
-import { h, createRef } from "./vdom.js";
+import { h, createRef, navigate } from "./vdom.js";
 import { base64ToBitSet, dateToLocalISOString, fmtYM } from "./lib.js";
-import { navigate } from "./router.js";
 function isCompleted(e) { return e.completedDate !== null; }
 /*
  * Render

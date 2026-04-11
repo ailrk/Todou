@@ -1,24 +1,40 @@
-/* Minimal Virtual DOM
-
-Instead of manipulating DOM elements directly, the virtual DOM (VDOM) constructs an in-memory
-representation of the DOM tree whenever the page updates. It then compares this new VDOM tree
-with the previous one, and translates the structural differences into the minimal set of required
-DOM operations. This process of comparing VDOMs and applying updates is called **reconciliation**.
-
-A real DOM element consists of **attributes** and **properties**. Attributes are static fields
-from the HTML markup, while properties are dynamic fields reflecting the current state of the element.
-In this VDOM, `VNode` contains only `attrs`, which represent both attributes and property updates.
-
-The diffing algorithm works recursively on the tree structure of the VDOM. At each step, it tries
-to minimize changes by **reusing as much of the existing structure as possible**. When a completely
-different node is encountered, the old node is discarded and a new one is constructed.
-
-Special care is needed for **lists**. List items can be inserted, deleted, or reordered. If children
-are compared only by index, removing an element in the middle of a list can cause all subsequent
-items to shift positions, breaking the diffing logic. To handle this, elements can have a stable
-`key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
-first, and fall back to index-based comparison if no key is provided.
-*/
+/**
+ * MINIMAL VDOM (v1.0.0)
+ * * DISTRO: Single-file TypeScript
+ * * TSCONFIG REQUIREMENTS:
+ * {
+ * "compilerOptions": {
+ * "jsx": "react",
+ * "jsxFactory": "h",
+ * "jsxFragmentFactory": "Fragment",
+ * "strict": true
+ * }
+ * }
+ *
+ * * USAGE:
+ * import { newVdoma, VDom, VNode } from './vdom.ts';
+ *
+ *
+ * Instead of manipulating DOM elements directly, the virtual DOM (VDOM) constructs an in-memory
+ * representation of the DOM tree whenever the page updates. It then compares this new VDOM tree
+ * with the previous one, and translates the structural differences into the minimal set of required
+ * DOM operations. This process of comparing VDOMs and applying updates is called **reconciliation**.
+ *
+ * A real DOM element consists of **attributes** and **properties**. Attributes are static fields
+ * from the HTML markup, while properties are dynamic fields reflecting the current state of the element.
+ * In this VDOM, `VNode` contains only `attrs`, which represent both attributes and property updates.
+ *
+ * The diffing algorithm works recursively on the tree structure of the VDOM. At each step, it tries
+ * to minimize changes by **reusing as much of the existing structure as possible**. When a completely
+ * different node is encountered, the old node is discarded and a new one is constructed.
+ *
+ * Special care is needed for **lists**. List items can be inserted, deleted, or reordered. If children
+ * are compared only by index, removing an element in the middle of a list can cause all subsequent
+ * items to shift positions, breaking the diffing logic. To handle this, elements can have a stable
+ * `key` that uniquely identifies them. The diffing algorithm will prioritize matching keyed elements
+ * first, and fall back to index-based comparison if no key is provided.
+ *
+ */
 export function createRef() {
     return { current: null };
 }
@@ -44,6 +60,14 @@ export function newVdom({ model, root, render, mkEffects }) {
 function createElement(vnode) {
     if (typeof vnode === 'string')
         return document.createTextNode(vnode);
+    // If it's the JSX fragment tag, create a transparent container
+    if (vnode.tag === "fragment") {
+        const fragment = document.createDocumentFragment();
+        vnode.children?.forEach(child => {
+            fragment.appendChild(createElement(child));
+        });
+        return fragment;
+    }
     const el = document.createElement(vnode.tag);
     if (vnode.ref) {
         vnode.ref.current = el;
@@ -240,6 +264,10 @@ function keyIsProperty(k) {
 function keyIsHandler(k, v) {
     return k.startsWith('on') && typeof v === 'function';
 }
+/* ------------------------------
+ * JSX related
+ * */
+export const Fragment = "fragment";
 /** JSX factory: turns JSX into our VNode */
 export function h(tag, props, ...children) {
     // Normalize children (flatten, drop null/undefined, keep strings)
@@ -254,6 +282,14 @@ export function h(tag, props, ...children) {
             flatChildren.push(c);
         }
     });
+    // Handle Fragment
+    if (tag === Fragment) {
+        return {
+            tag: "fragment", // A internal string identifier
+            children: flatChildren,
+            attrs: {}
+        };
+    }
     return {
         tag,
         attrs: props || {},
@@ -261,4 +297,52 @@ export function h(tag, props, ...children) {
         key: props?.key,
         ref: props?.ref
     };
+}
+export function getRoute() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        path: window.location.pathname,
+        params: Object.fromEntries(params)
+    };
+}
+/* Start a new Router. It will intercept clicks on <a> tags
+ * to prevent a full page reload for internal links.
+ * */
+export function initRouter(onRouter) {
+    window.addEventListener('popstate', _ => onRouter(getRoute()));
+    document.addEventListener('click', (ev) => {
+        const anchor = ev.target.closest("a");
+        if (anchor && anchor.href && anchor.host === window.location.host) {
+            // CHECK 1
+            // If the link is just a fragment (e.g., <a href="#section">)
+            // or a dummy link (<a href="#">), let the browser handle it naturally.
+            const rawHref = anchor.getAttribute("href");
+            if (rawHref && rawHref.startsWith("#")) {
+                return;
+            }
+            // CHECK 2
+            // Check if we are already there.
+            const newPath = anchor.pathname + anchor.search;
+            const currentPath = window.location.pathname + window.location.search;
+            if (newPath === currentPath) {
+                ev.preventDefault();
+                // Scroll to top instead of re-routing
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            // Proceed with frontend route.
+            ev.preventDefault();
+            window.history.pushState({}, anchor.pathname + anchor.search);
+            onRouter(getRoute());
+        }
+    });
+    // Start the first route right away.
+    onRouter(getRoute());
+}
+/* Navigate an internal link. This will triggers the 'popstate' eventhandler
+ * which calls `onRouter` on the link with the `Route` as the parameter.
+ * */
+export function navigate(path) {
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
 }
