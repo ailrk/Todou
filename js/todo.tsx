@@ -45,6 +45,10 @@ export interface Model {
   presence: PresenceView;
   calendar: YMD;            // current calendar date
   entry: Entry | null;      // current focused entry
+  touchstartX: number;
+  touchendX: number;
+  touchstartY: number;
+  touchendY: number;
 
   // shared local
   vdom: VDom;
@@ -934,9 +938,14 @@ export async function init(model: Model, signal: AbortSignal) {
   model.showCalendar = false;
   model.showDetail   = false;
   model.presence     = await base64ToBitSet(model.presenceMap);
+  model.touchstartX  = 0;
+  model.touchstartY  = 0;
+  model.touchendX    = 0;
+  model.touchendY    = 0;
 
   console.log('main', model);
 
+  // Keyboard Events
   document.body.addEventListener('keydown', (ev: KeyboardEvent) => {
     if (["ArrowLeft", "ArrowRight"].includes(ev.key)) {
       ev.preventDefault();
@@ -950,5 +959,50 @@ export async function init(model: Model, signal: AbortSignal) {
         break;
     }
   }, { signal });
+
+
+  // Swipe Events
+  const directions = {
+    RIGHT: { x: 1, y: 0 },
+    LEFT:  { x: -1, y: 0 },
+    UP:    { x: 0, y: -1 },
+    DOWN:  { x: 0, y: 1 }
+  };
+
+  document.body.addEventListener('touchstart', (ev: TouchEvent) => {
+    model.touchstartX = ev.changedTouches[0].screenX;
+    model.touchstartY = ev.changedTouches[0].screenY;
+  }, { signal });
+
+  document.body.addEventListener('touchend', (ev: TouchEvent) => {
+    model.touchendX = ev.changedTouches[0].screenX;
+    model.touchendY = ev.changedTouches[0].screenY;
+
+    const deltaX = model.touchendX - model.touchstartX;
+    const deltaY = model.touchendY - model.touchstartY;
+
+    const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // 50 pixels threshold
+    if (magnitude < 120) return;
+
+    const swipeX = deltaX / magnitude;
+    const swipeY = deltaY / magnitude;
+
+    let maxDot = -Infinity;
+    let swipeDirection = '';
+    for (const [key, dir] of Object.entries(directions)) {
+      const dot = (swipeX * dir.x) + (swipeY * dir.y);
+      if (dot > maxDot) {
+        maxDot = dot;
+        swipeDirection = key;
+      }
+    }
+    switch (swipeDirection) {
+        case "LEFT": nextDay(model); break;
+        case "RIGHT": prevDay(model); break;
+    }
+  }, { signal });
+
   await model.vdom.render();
 }
