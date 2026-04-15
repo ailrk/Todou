@@ -16,7 +16,7 @@ in
         };
 
         storage = lib.mkOption {
-          type = lib.types.string;
+          type = lib.types.str;
           description = ''
             List of local file system paths to serve.
             Todou supports three storage backends:
