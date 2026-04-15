@@ -11,7 +11,7 @@ export function renderStat(model) {
                 " ",
                 model.date.substring(0, 7),
                 " "),
-            h("span", { class: "back-icon", onclick: (_) => { window.location.href = `/${model.date}`; } })),
+            h("span", { class: "back-icon", onclick: (_) => { window.history.back(); } })),
         h("section", { class: "todoapp pg-stat" },
             renderCFDWidget(model),
             renderCalendarWidget(model)),

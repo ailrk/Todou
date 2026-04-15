@@ -1,4 +1,4 @@
-import { VNode, h, VDom } from "./vdom.js";
+import { VNode, h, VDom, navigate } from "./vdom.js";
 import { base64ToBitSet, fmtYM, PresenceView, YMD } from "./lib.js";
 
 
@@ -51,7 +51,7 @@ export function renderStat(model: Model): VNode {
         <span> {model.date.substring(0, 7)} </span>
         <span
           class="back-icon"
-          onclick={(_: MouseEvent) => { window.location.href = `/${model.date}`; }}
+          onclick={(_: MouseEvent) => { window.history.back(); }}
         ></span>
       </nav>
       <section class="todoapp pg-stat">
