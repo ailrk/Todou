@@ -202,6 +202,7 @@ server Options { port } handle = scotty port do
   get "/right-arrow.svg"              do svg        $(embedFileRelative "data/todou/right-arrow.svg")
   get "/x.svg"                        do svg        $(embedFileRelative "data/todou/x.svg")
   get "/calendar.svg"                 do svg        $(embedFileRelative "data/todou/calendar.svg")
+  get "/today.svg"                    do svg        $(embedFileRelative "data/todou/today.svg")
   get "/stat.svg"                     do svg        $(embedFileRelative "data/todou/stat.svg")
   get "/back.svg"                     do svg        $(embedFileRelative "data/todou/back.svg")
   get "/favicon.svg"                  do svg        $(embedFileRelative "data/todou/favicon.svg")

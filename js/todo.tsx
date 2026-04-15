@@ -65,10 +65,17 @@ export function renderTodo(model: Model): VNode {
     <div class="todou-container" tabindex="-1">
       <nav>
         <span onclick={(_: MouseEvent) => { toggleCalendar(model); }}> {model.date} </span>
-        <span
-          class="stat-icon"
-          onclick={(_: MouseEvent) => {  navigate(`/stat?date=${model.date}`); }}
-        ></span>
+
+        <div class="control">
+          <span
+            class="today-icon icon"
+            onclick={(_: MouseEvent) => {  navigate(`/`); }}
+          ></span>
+          <span
+            class="stat-icon icon"
+            onclick={(_: MouseEvent) => {  navigate(`/stat?date=${model.date}`); }}
+          ></span>
+        </div>
       </nav>
       <section class="todoapp pg-todo">
         {renderInput(model)}
@@ -228,7 +235,6 @@ function renderTag(model: Model, entry: Entry, tag: string, canDelete: boolean =
           class="delete-tag"
           onclick={() => deleteTag(model, entry, tag)}>
         </button>
-
       }
     </div>
   );

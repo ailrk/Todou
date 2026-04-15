@@ -49,10 +49,16 @@ export function renderStat(model: Model): VNode {
     <div class="todou-container" tabindex="-1">
       <nav>
         <span> {model.date.substring(0, 7)} </span>
-        <span
-          class="back-icon"
-          onclick={(_: MouseEvent) => { navigate(`/${model.date}`); }}
-        ></span>
+        <div class="control">
+          <span
+            class="today-icon icon"
+            onclick={(_: MouseEvent) => { navigate(`/`); }}
+          ></span>
+          <span
+            class="back-icon icon"
+            onclick={(_: MouseEvent) => { navigate(`/${model.date}`); }}
+          ></span>
+        </div>
       </nav>
       <section class="todoapp pg-stat">
         {renderCFDWidget(model)}

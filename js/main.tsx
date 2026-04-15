@@ -56,7 +56,7 @@ async function routeDate(model: Model, matched: RegExpMatchArray, _: Record<stri
   Todo.init(Object.assign(model, data), signal);
 }
 
-async function routeStat(model: Model, _: RegExpMatchArray, params: Record<string, string>, signal: AbortSignal) {
+async function routeStat(model: Model, _matched: RegExpMatchArray, params: Record<string, string>, signal: AbortSignal) {
   const date = params["date"] ?? model.date;
 
   model.date = date;
@@ -68,12 +68,19 @@ async function routeStat(model: Model, _: RegExpMatchArray, params: Record<strin
 }
 
 
+async function routeMain(_model: Model, _matched: RegExpMatchArray, params: Record<string, string>, signal: AbortSignal) {
+  window.location.href = "/";
+}
+
+
 const routes = [
   /* Statistic page */
   { path: /^\/stat(\?.*)?$/, handler: routeStat },
 
   /* Render todo for a date */
   { path: /^\/(\d{4}-\d{2}-\d{2})$/, handler: routeDate },
+
+  { path: /^\/?$/, handler: routeMain },
 ];
 
 

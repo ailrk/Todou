@@ -36,18 +36,22 @@ async function routeDate(model, matched, _, signal) {
     const data = await response.json();
     Todo.init(Object.assign(model, data), signal);
 }
-async function routeStat(model, _, params, signal) {
+async function routeStat(model, _matched, params, signal) {
     const date = params["date"] ?? model.date;
     model.date = date;
     const response = await fetch(`/api/stat?date=${date}`);
     const data = await response.json();
     Stat.init(Object.assign(model, data), signal);
 }
+async function routeMain(_model, _matched, params, signal) {
+    window.location.href = "/";
+}
 const routes = [
     /* Statistic page */
     { path: /^\/stat(\?.*)?$/, handler: routeStat },
     /* Render todo for a date */
     { path: /^\/(\d{4}-\d{2}-\d{2})$/, handler: routeDate },
+    { path: /^\/?$/, handler: routeMain },
 ];
 /*
  * Main

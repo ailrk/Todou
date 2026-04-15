@@ -112,29 +112,39 @@ nav span:hover::before{
 	border-color: rgba(175, 47, 47, 0.1);
 }
 
-nav .stat-icon::before {
-  background-image: url('stat.svg');
+
+nav .stat-icon::before,
+    .back-icon::before,
+    .today-icon::before {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   border-radius: 50%;
   border: 2px solid transparent;
 }
 
 
-nav .stat-icon:hover::before {
+nav .control {
+  display: flex;
+  gap: 8px;
+}
+
+
+nav .icon:hover::before {
 	border-color: rgba(175, 47, 47, 0.1);
+}
+
+
+nav .stat-icon::before {
+  background-image: url('stat.svg');
 }
 
 
 nav .back-icon::before {
   background-image: url('back.svg');
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  border-radius: 50%;
-  border: 2px solid transparent;
 }
 
 
-nav .back-icon:hover::before {
-	border-color: rgba(175, 47, 47, 0.1);
+nav .today-icon::before  {
+  background-image: url('today.svg');
 }
 
 
