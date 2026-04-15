@@ -32,15 +32,14 @@ function dispatchEffects(model) {
  */
 async function routeDate(model, matched, _, signal) {
     const newDate = matched[0].replace("/", "").trim() ?? model.date;
-    if (newDate !== model.date || model.tag === 'init') {
-        const response = await fetch(`/api/todo/${newDate}`);
-        const data = await response.json();
-        Todo.init(Object.assign(model, data), signal);
-    }
+    const response = await fetch(`/api/todo/${newDate}`);
+    const data = await response.json();
+    Todo.init(Object.assign(model, data), signal);
 }
 async function routeStat(model, _, params, signal) {
     const date = params["date"] ?? model.date;
-    const response = await fetch(`/api/stat?=${date}`);
+    model.date = date;
+    const response = await fetch(`/api/stat?date=${date}`);
     const data = await response.json();
     Stat.init(Object.assign(model, data), signal);
 }

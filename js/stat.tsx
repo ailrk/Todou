@@ -51,7 +51,7 @@ export function renderStat(model: Model): VNode {
         <span> {model.date.substring(0, 7)} </span>
         <span
           class="back-icon"
-          onclick={(_: MouseEvent) => { window.history.back(); }}
+          onclick={(_: MouseEvent) => { navigate(`/${model.date}`); }}
         ></span>
       </nav>
       <section class="todoapp pg-stat">
@@ -172,6 +172,14 @@ function renderCalendar(model: Model) {
     return result;
   }
 
+  function jump(i: number) {
+    let url = "";
+    url += `/${model.calendar.year}-`;
+    url += `${String(model.calendar.month+1).padStart(2, '0')}-`;
+    url += `${String(i).padStart(2, '0')}`;
+    navigate(url);
+  }
+
   return (
     <div class="calendar-content">
       <span class="calendar-header">
@@ -193,8 +201,8 @@ function renderCalendar(model: Model) {
               <li
                 class={today(i) + " " + presence(i)}
                 style={ i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : ""}
-                onclick={(_: MouseEvent) => {
-                  window.location.href = `/${model.calendar.year}-${String(model.calendar.month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                onclick={() => {
+                  jump(i);
                 }}>
                   { i }
               </li>

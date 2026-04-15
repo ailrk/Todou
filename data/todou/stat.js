@@ -1,4 +1,4 @@
-import { h } from "./vdom.js";
+import { h, navigate } from "./vdom.js";
 import { base64ToBitSet, fmtYM } from "./lib.js";
 ;
 /*
@@ -11,7 +11,7 @@ export function renderStat(model) {
                 " ",
                 model.date.substring(0, 7),
                 " "),
-            h("span", { class: "back-icon", onclick: (_) => { window.history.back(); } })),
+            h("span", { class: "back-icon", onclick: (_) => { navigate(`/${model.date}`); } })),
         h("section", { class: "todoapp pg-stat" },
             renderCFDWidget(model),
             renderCalendarWidget(model)),
@@ -110,6 +110,13 @@ function renderCalendar(model) {
         }
         return result;
     }
+    function jump(i) {
+        let url = "";
+        url += `/${model.calendar.year}-`;
+        url += `${String(model.calendar.month + 1).padStart(2, '0')}-`;
+        url += `${String(i).padStart(2, '0')}`;
+        navigate(url);
+    }
     return (h("div", { class: "calendar-content" },
         h("span", { class: "calendar-header" },
             h("button", { onclick: (_) => { prevCalendar(model); } }),
@@ -130,8 +137,8 @@ function renderCalendar(model) {
             Array
                 .from({ length: daysInMonth }, (_, i) => i + 1)
                 .map(i => {
-                return (h("li", { class: today(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: (_) => {
-                        window.location.href = `/${model.calendar.year}-${String(model.calendar.month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                return (h("li", { class: today(i) + " " + presence(i), style: i == 1 ? `grid-column-start: ${firstDayOfWeek + 1}` : "", onclick: () => {
+                        jump(i);
                     } }, i));
             }))));
 }

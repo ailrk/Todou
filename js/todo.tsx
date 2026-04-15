@@ -932,6 +932,7 @@ export async function init(model: Model, signal: AbortSignal) {
     year: date.getFullYear(),
     month: date.getMonth()
   }
+
   model.entry        = null;
   model.field        = "";
   model.visibility   = "All";

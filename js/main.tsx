@@ -50,17 +50,18 @@ function dispatchEffects(model: Model) {
 
 async function routeDate(model: Model, matched: RegExpMatchArray, _: Record<string, string>, signal: AbortSignal) {
   const newDate = matched[0].replace("/", "").trim() ?? model.date;
-  if (newDate !== model.date || model.tag === 'init') {
-    const response = await fetch(`/api/todo/${newDate}`);
-    const data = await response.json() as Todo.Model;
+  const response = await fetch(`/api/todo/${newDate}`);
+  const data = await response.json() as Todo.Model;
 
-    Todo.init(Object.assign(model, data), signal);
-  }
+  Todo.init(Object.assign(model, data), signal);
 }
 
 async function routeStat(model: Model, _: RegExpMatchArray, params: Record<string, string>, signal: AbortSignal) {
   const date = params["date"] ?? model.date;
-  const response = await fetch(`/api/stat?=${date}`);
+
+  model.date = date;
+
+  const response = await fetch(`/api/stat?date=${date}`);
   const data = await response.json() as Stat.Model;
 
   Stat.init(Object.assign(model, data), signal);
